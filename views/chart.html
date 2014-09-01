@@ -1,0 +1,64 @@
+<html>
+<head>
+<style>
+	.time {width: 200px;}
+	.atticTemp, .outsideTemp {width: 200px;}
+	.time, .atticTemp, .outsideTemp {float: left; background: transparent;}
+	.row {clear: both; width: 600px;}
+	.odd {background-color: #FFF;}
+	.even {background-color: #CCC;}
+	.spacer {clear: both;}
+	
+</style>
+<script>
+    // temperature data - array of {t: dateTime, atticTemp: temp, outsideTemp: temp}
+	var temperatureData = {{{temperatures}}};
+</script>
+<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+</head>
+<body>
+<div id="chart_div"></div>
+<script>
+
+// convert degrees Celsius to Fahrenheit (rounded to 1 decimal point)
+function toFahrenheit(c) {
+    return Math.round(((c * 9 / 5) + 32) * 10) / 10;
+}
+
+var useFahrenheit = window.location.search.indexOf("units=F") !== -1;
+
+google.load("visualization", "1", {packages:["corechart"]});
+google.setOnLoadCallback(drawChart);
+function drawChart() {
+	var data = new google.visualization.DataTable();
+	data.addColumn('datetime', 'time', 'time');
+	data.addColumn('number', 'attic', 'attic');
+	data.addColumn('number', 'outside', 'outside');
+	var item;
+	for (var i = 0, len = temperatureData.length; i < len; i++) {
+		item = temperatureData[i];
+		if (!useFahrenheit) {
+			data.addRow([new Date(item.t), item.atticTemp, item.outsideTemp]);
+		} else {
+			data.addRow([new Date(item.t), toFahrenheit(item.atticTemp), toFahrenheit(item.outsideTemp)]);
+		}
+	}
+
+	var options = {
+	  title: 'Temperatures'
+	};
+
+	var chart = new google.visualization.LineChart(document.getElementById('chart_div'));
+
+	chart.draw(data, options);
+}
+$(window).resize(drawChart);
+
+// reload the page every 10 minutes
+setInterval(function() {
+	window.reload(true);
+}, 10 * 60 * 1000);
+</script>	
+</body>
+</html>

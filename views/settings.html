@@ -1,0 +1,39 @@
+<html>
+<head>
+<style>
+	.time {width: 200px;}
+	.atticTemp, .outsideTemp {width: 200px;}
+	.time, .atticTemp, .outsideTemp {float: left; background: transparent;}
+	.row {clear: both; width: 600px;}
+	.odd {background-color: #FFF;}
+	.even {background-color: #CCC;}
+	.spacer {clear: both;}
+	
+</style>
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
+</head>
+<body>
+	
+	<p>Select the desired temperature units:</p>
+
+	<form>
+	<input checked="checked" id="celsius" name="temperatureUnits" type="radio" value="C" /> 
+	<label for="celsius">Celsius</label><br />
+	<input id="fahrenheit" name="temperatureUnits" type="radio" value="F" /> 
+	<label for="fahrenheit">Fahrenheit</label>
+	</form>
+
+<script>
+(function() {
+	var temperatureUnits = $.cookie("temperatureUnits") || "C";
+	if (temperatureUnits !== "C") {
+		temperatureUnits = "F";
+	}
+	$("input[name='temperatureUnits']").change(function() {
+		$.cookie("temperatureUnits", this.value, { expires: 365 * 10, path: '/' });
+	}).filter("[value='" + temperatureUnits + "']").prop("checked", true);
+})();
+</script>
+</body>
+</html>

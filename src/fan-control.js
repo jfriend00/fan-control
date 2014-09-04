@@ -1,15 +1,30 @@
-// Load the http module to create an http server.
+"use strict";
 var fs = require('fs');
-var Promise = require("bluebird");
+var Promise = require('bluebird');
 var url = require('url');
 var express = require('express');
-var app = express();
 var hbs = require('hbs');
+var gpio = require('gpio');
+var cookieParser = require('cookie-parser');
+
+var app = express();
+
+// operative site-wide cookies:
+// temperatureUnits: "C" | "F"
+
+// put middleware into place
+app.use(cookieParser());
+app.use(function(request, response, next) {
+    // fill in default values for common cookies so we don't have to do it elsewhere in the code
+    request.cookies.temperatureUnits = request.cookies.temperatureUnits || "C";
+    next();
+});
 
 // set handlebars as view engine
 app.set('view engine', 'html');
 app.engine('html', hbs.__express);
 
+// register template helpers
 hbs.registerHelper("prettifyDate", function(timestamp) {
     return new Date(timestamp).toLocaleTimeString()
 });
@@ -25,7 +40,7 @@ hbs.registerHelper("formatTemp", function(temp, units) {
     return temp;
 });
 
-// define our page routes
+// define page routes
 app.get('/', function(request, response) {
     var temp = data.temperatures[data.temperatures.length - 1];
     var tempData = {
@@ -33,7 +48,7 @@ app.get('/', function(request, response) {
         tAtticF: toFahrenheitStr(temp.atticTemp),
         tOutsideC: temp.outsideTemp,
         tOutsideF: toFahrenheitStr(temp.outsideTemp),
-        units: request.query.units || "C"
+        units: request.cookies.temperatureUnits
     }
     response.render('index', tempData);    
 });
@@ -43,10 +58,14 @@ app.get('/index', function(request, response) {
     response.render('index', {test: "Hello World"});
 });
 
+app.get('/settings', function(request, response) {
+    response.render('settings');
+});
+
 app.get('/debug', function(request, response) {
     var tempData = {
         temperatures: data.temperatures,
-        units: request.query.units || "C"
+        units: request.cookies.temperatureUnits
     };
     response.render('debug', tempData);
 });
@@ -54,13 +73,13 @@ app.get('/debug', function(request, response) {
 app.get('/chart', function(request, response) {
     var tempData = {
         temperatures: JSON.stringify(data.temperatures),
-        units: request.query.units || "C"
+        units: request.cookies.temperatureUnits
     };
     response.render('chart', tempData);
 });
 
-var server = app.listen(80, function() {
-    console.log("Server running on port 80");
+var server = app.listen(8080, function() {
+    console.log("Server running on port 8080");
 });
 
 
@@ -82,7 +101,11 @@ function getTemperature(id) {
     return new Promise(function(resolve, reject) {
         var fname = "/sys/bus/w1/devices/" + id + "/w1_slave";
         fs.readFile(fname,  function(err, data) {
-            if (err) reject("filename (" + fname + ") read failed.");
+            if (err || !data) {
+                console.log("failed to read temperature file: " + fname);
+                reject("filename (" + fname + ") read failed.");
+                return;
+            }
             
             // sample file content
             // 91 01 4b 46 7f ff 0f 10 25 : crc=25 YES
@@ -200,14 +223,18 @@ var data = {
             saveData.temperatures = data.temperatures;
             var theData = JSON.stringify(saveData);
             if (sync) {
-                fs.writeFileSync(filename, theData, 'utf8');
+                // note: 438 decimal mode is to give everyone read and write privileges
+                fs.writeFileSync(filename, theData, {mode: 438, encoding: 'utf8'});
             } else {
-                fs.writeFile(filename, JSON.stringify(saveData), 'utf8', function(err) {
+                // note: when this file is created, it must be given rw rights to everyone
+                // so that it can be written to upon SIGINT to save our data on shut-down
+                // presumably, the process isn't running at normal privileges upon shutdown
+                fs.writeFile(filename, JSON.stringify(saveData), {mode: 438, encoding: 'utf8'}, function(err) {
                     if (err) throw err;
                 });
             }
         } catch(e) {
-            console.log("data.writeData() - error writing data");
+            console.log(e, "data.writeData() - error writing data");
         }
     },
     
@@ -221,7 +248,9 @@ var data = {
                 data.temperatures = theData.temperatures;
             }
         } catch(e) {
-            console.log("data.readData() - error reading data");
+            if (e.code !== 'ENOENT') {
+                console.log("data.readData() - error reading data");
+            }
         }
     },
     
@@ -385,3 +414,26 @@ function poll() {
 
 poll();
 data.temperatureInterval = setInterval(poll, 10 * 1000);
+
+
+// kill the server process at 4am each night
+// the forever daemon will restart it after we stop it
+(function() {
+    var exitTime = new Date();
+    if (exitTime.getHours() < 4) {
+        exitTime.setHours(4, 0, 0, 0);
+    } else {
+        exitTime.setHours(28, 0, 0, 0);
+    }
+    // calc amount of time until restart
+    var t = exitTime.getTime() - Date.now();
+    setTimeout(function(){
+        // make sure data is written out
+        data.writeData(config.dataFilename, true);
+        
+        console.log("daily 4am exit - forever daemon should restart us");
+        exit(0);
+    }, t);
+    
+    
+})();

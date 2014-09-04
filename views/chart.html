@@ -16,6 +16,8 @@
 </script>
 <script type="text/javascript" src="http://www.google.com/jsapi"></script>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
+
 </head>
 <body>
 <div id="chart_div"></div>
@@ -26,7 +28,7 @@ function toFahrenheit(c) {
     return Math.round(((c * 9 / 5) + 32) * 10) / 10;
 }
 
-var useFahrenheit = window.location.search.indexOf("units=F") !== -1;
+var useFahrenheit = $.cookie("temperatureUnits") === "F";
 
 google.load("visualization", "1", {packages:["corechart"]});
 google.setOnLoadCallback(drawChart);

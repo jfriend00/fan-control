@@ -30,19 +30,43 @@ function now() {
     return new Date().getTime();
 }
 
+var daysRegex = /([?&])days=([.\d]+)/;
+(function() {
+	// initialize number of days from the URL before we draw the chart
+	if (window.location.search.length > 2) {
+		var matches = window.location.search.match(daysRegex);
+		if (matches) {
+			$("#numDays").val(matches[2]);
+		}
+	}
+})();
 
 var timer;
 $("#numDays").on("change", function(e) {
+	resetReloadTimer();
 	clearTimeout(timer);
-	drawChart(+this.value);
+	drawChartGetDays();
 }).on("input", function(e) {
 	// short pause before processing
+	resetReloadTimer();
 	clearTimeout(timer);
 	var self = this;
 	timer = setTimeout(function() {
-		drawChart(+self.value);
+		resetReloadTimer();
+		drawChartGetDays();
 	}, 500);
 });
+
+// parse days out of field
+function getDays() {
+	var dayStr = $("#numDays").val();
+	var matches = dayStr.match(/^\s*([.\d]+)/);
+	if (matches) {
+		return +matches[1];
+	} else {
+		return 0;
+	}
+}
 
 // convert degrees Celsius to Fahrenheit (rounded to 1 decimal point)
 function toFahrenheit(c) {
@@ -52,19 +76,17 @@ function toFahrenheit(c) {
 var useFahrenheit = $.cookie("temperatureUnits") === "F";
 
 google.load("visualization", "1", {packages:["corechart"]});
-google.setOnLoadCallback(function() {
-	drawChart();
-});
+google.setOnLoadCallback(drawChartGetDays);
 
 function drawChartGetDays() {
-	drawChart(+$("#numDays").val());
+	drawChart(getDays());
 }
 
 function drawChart(days) {
 	var timeLimit;
 	
 	days = days || 0;
-	days = Math.min(days, 0);
+	days = Math.max(days, 0);
 	if (days) {
 		timeLimit = now() - ((24 * 60 * 60 * 1000) * days);
 	} else {
@@ -101,9 +123,29 @@ function drawChart(days) {
 $(window).resize(drawChartGetDays);
 
 // reload the page every 10 minutes
-setTimeout(function() {
-	window.location.reload(true);
-}, 10 * 60 * 1000);
+// put chart settings into the URL so they get reloaded too
+var reloadTimer;
+
+function resetReloadTimer() {
+	clearTimeout(reloadTimer);
+	reloadTimer = setTimeout(function() {
+		var url = window.location.href;
+		var days = getDays();
+		if (days) {
+			if (window.location.search.length < 2) {
+				url += "?days=" + days;
+			} else if (window.location.search.match(daysRegex)) {
+				url = url.replace(daysRegex, "$1days=" + days)
+			} else {
+				url += "&days=" + days;
+			}
+		}
+		window.location.replace(url);
+	}, 10 * 60 * 1000);
+}
+
+resetReloadTimer();
+
 </script>	
 </body>
 </html>

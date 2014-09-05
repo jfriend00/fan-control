@@ -21,7 +21,28 @@
 </head>
 <body>
 <div id="chart_div"></div>
+<div id="options">
+	<label>Show Number of Days</label><input id="numDays" /><br>
+</div>
 <script>
+
+function now() {
+    return new Date().getTime();
+}
+
+
+var timer;
+$("#numDays").on("change", function(e) {
+	clearTimeout(timer);
+	drawChart(+this.value);
+}).on("input", function(e) {
+	// short pause before processing
+	clearTimeout(timer);
+	var self = this;
+	timer = setTimeout(function() {
+		drawChart(+self.value);
+	}, 500);
+});
 
 // convert degrees Celsius to Fahrenheit (rounded to 1 decimal point)
 function toFahrenheit(c) {
@@ -31,8 +52,24 @@ function toFahrenheit(c) {
 var useFahrenheit = $.cookie("temperatureUnits") === "F";
 
 google.load("visualization", "1", {packages:["corechart"]});
-google.setOnLoadCallback(drawChart);
-function drawChart() {
+google.setOnLoadCallback(function() {
+	drawChart();
+});
+
+function drawChartGetDays() {
+	drawChart(+$("#numDays").val());
+}
+
+function drawChart(days) {
+	var timeLimit;
+	
+	days = days || 0;
+	days = Math.min(days, 0);
+	if (days) {
+		timeLimit = now() - ((24 * 60 * 60 * 1000) * days);
+	} else {
+		timeLimit = 0;
+	}
 	var data = new google.visualization.DataTable();
 	data.addColumn('datetime', 'time', 'time');
 	data.addColumn('number', 'attic', 'attic');
@@ -40,22 +77,28 @@ function drawChart() {
 	var item;
 	for (var i = 0, len = temperatureData.length; i < len; i++) {
 		item = temperatureData[i];
-		if (!useFahrenheit) {
-			data.addRow([new Date(item.t), item.atticTemp, item.outsideTemp]);
-		} else {
-			data.addRow([new Date(item.t), toFahrenheit(item.atticTemp), toFahrenheit(item.outsideTemp)]);
+		if (item.t > timeLimit) {
+			if (!useFahrenheit) {
+				data.addRow([new Date(item.t), item.atticTemp, item.outsideTemp]);
+			} else {
+				data.addRow([new Date(item.t), toFahrenheit(item.atticTemp), toFahrenheit(item.outsideTemp)]);
+			}
 		}
 	}
 
 	var options = {
-	  title: 'Temperatures'
+	  title: 'Temperatures',
+	  curveType: 'function',
+	  height: 500,
+	  lineWidth: 1,
+	  legend: {position: 'bottom'}
 	};
 
 	var chart = new google.visualization.LineChart(document.getElementById('chart_div'));
 
 	chart.draw(data, options);
 }
-$(window).resize(drawChart);
+$(window).resize(drawChartGetDays);
 
 // reload the page every 10 minutes
 setTimeout(function() {

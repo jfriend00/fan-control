@@ -1,18 +1,21 @@
 "use strict";
 var fs = require('fs');
 var Promise = require('bluebird');
-var url = require('url');
 var express = require('express');
 var hbs = require('hbs');
 var gpio = require('gpio');
 var cookieParser = require('cookie-parser');
+var util = require('util');
 
 var app = express();
 
-// operative site-wide cookies:
-// temperatureUnits: "C" | "F"
+// static routes that get no further processing
+app.use('/lib', express.static(__dirname + '/lib'));
+app.use('/img', express.static(__dirname + '/img'));
 
 // put middleware into place
+// operative site-wide cookies:
+// temperatureUnits: "C" | "F"
 app.use(cookieParser());
 app.use(function(request, response, next) {
     // fill in default values for common cookies so we don't have to do it elsewhere in the code
@@ -26,7 +29,7 @@ app.engine('html', hbs.__express);
 
 // register template helpers
 hbs.registerHelper("prettifyDate", function(timestamp) {
-    return new Date(timestamp).toLocaleTimeString()
+    return new Date(timestamp).toLocaleTimeString();
 });
 
 hbs.registerHelper("stripes", function(index) {
@@ -42,14 +45,14 @@ hbs.registerHelper("formatTemp", function(temp, units) {
 
 // define page routes
 app.get('/', function(request, response) {
-    var temp = data.temperatures[data.temperatures.length - 1];
+    var temp = data.getTemperatureItem(-1);
     var tempData = {
         tAtticC: temp.atticTemp, 
         tAtticF: toFahrenheitStr(temp.atticTemp),
         tOutsideC: temp.outsideTemp,
         tOutsideF: toFahrenheitStr(temp.outsideTemp),
         units: request.cookies.temperatureUnits
-    }
+    };
     response.render('index', tempData);    
 });
 
@@ -72,14 +75,15 @@ app.get('/debug', function(request, response) {
 
 app.get('/chart', function(request, response) {
     var tempData = {
-        temperatures: JSON.stringify(data.temperatures),
+        // todo - trim the data down
+        temperatures: util.inspect(data.temperatures, {depth: null}),
         units: request.cookies.temperatureUnits
     };
     response.render('chart', tempData);
 });
 
-var server = app.listen(8080, function() {
-    console.log("Server running on port 8080");
+var server = app.listen(8081, function() {
+    console.log("Server running on port 8081");
 });
 
 
@@ -121,11 +125,13 @@ function getTemperature(id) {
                 } else {
                     console.log("didn't find t=xxxxx");
                     reject("didn't find t=xxxxx");
+                    return;
                 }
             } else {
                 // no valid temperature here
                 console.log("didn't find 'YES'");
                 reject("didn't find 'YES'");
+                return;
             }
         });
     });
@@ -157,7 +163,7 @@ var config = {
     waitTime: 10 * 60 * 1000,                   // 10 minutes (min time to wait from turn off before turning on)
     fanEventRetentionDays: (365 * 3) + 1,       // retain N days of fan on/off data
     temperatureRetentionDays: 7,                // retain N days of temperature data (starting from next midnight transition)
-    temperatureRetentionMaxItems: 10000,        // max temp points to retain (to prevent runaway memory usage)
+    temperatureRetentionMaxItems: 5000,         // max temp points to retain (to prevent runaway memory usage)
     dataSaveTime: 1000 * 60 * 60,               // save data to SD once per hour    
     
     configFilename: "/home/pi/fan-control.cfg",
@@ -254,6 +260,81 @@ var data = {
         }
     },
     
+    ageData: function() {
+        // see if there are just too many temperatures retained
+        // this is to protect memory usage in case temperature varies wildly
+        // so we are recording too many data points
+        // oldest items are at the beginning of the array so remove from the beginning
+        var temps = this.temperatures;
+        var numToRemove = temps.length - config.temperatureRetentionMaxItems;
+        if (numToRemove > 0) {
+            // this avoids making a copy of the data (good for memory usage reasons)
+            if (numToRemove === 1) {
+                // .shift() is 3x faster than .splice() and is the common use case
+                temps.shift();
+            } else {
+                temps.splice(0, numToRemove);
+            }
+        }
+
+        // assumes each array element is an object with a .t property
+        function truncateToNumberOfDays(array, n) {
+            // keep track of each unique day of data we encounter
+            var days = [];
+            for (var i = 0, len = array.length; i < len; i++) {
+                var day = getDayT(array[i].t);
+                // if day is not already in our array and we've reach the max number of days
+                // allow one extra day for the unfinished day today so we always have
+                // n of full older days
+                if (days.indexOf(day) === -1) { 
+                    if (days.length > n) {
+                        // then truncate the array and be done
+                        array.length = i;
+                        return;
+                    } else {
+                        days.push(day);
+                    }
+                }
+            }
+        
+        }
+
+        // truncate arrays to max number of days of data
+        truncateToNumberOfDays(temps, config.temperatureRetentionDays);
+        truncateToNumberOfDays(this.fanOnOffEvents, config.fanEventRetentionDays);
+    },
+    
+    // time is optional - if not passed, the current time will be used
+    addTemperature: function(tAttic, tOutside, time) {
+        time = time || now();
+        this.temperatures.push({t: time, atticTemp: tAttic, outsideTemp: tOutside});
+    },
+    
+    // negative numbers are from end (so -1 gives last item)
+    getTemperatureItem: function(index) {
+        var len = this.temperatures.length;
+        if (len) {
+            if (index < 0) {
+                index = len + index;
+            }
+            if (index >= 0 && index < len) {
+                return this.temperatures[index];
+            }
+        }
+        return null;
+    },
+    
+    getTemperatureLength: function() {
+        return this.temperatures.length;
+    },
+    
+    /* This is a sample iteration of temperature data 
+    var item;
+    for (var i = 0, len = data.getTemperatureLength(), i < len; i++) {
+        item = data.getTemperatureItem(i);
+    }
+    */
+    
     init: function(filename, writeTime) {
         // read any prior data
         this.readData(filename);
@@ -342,56 +423,16 @@ function getDayT(t) {
     return date.getTime();
 }
 
-// trim the temperature and event data per the configuration settings
-// so it doesn't accumulate indefinitely
-function ageData() {
-    // see if there are just too many temperatures retained
-    // this is to protect memory usage in case temperature varies wildly
-    // so we are recording too many data points
-    if (data.temperatures.length > config.temperatureRetentionMaxItems) {
-        // throw away oldest data items
-        data.temperatures.length = config.temperatureRetentionMaxItems;
-    }
-
-    // assumes each array element starts with a 
-    function truncateToNumberOfDays(array, n) {
-        // keep track of each unique day of data we encounter
-        var days = [];
-        for (var i = 0, len = array.length; i < len; i++) {
-            var day = getDayT(array[i].t);
-            // if day is not already in our array and we've reach the max number of days
-            // allow one extra day for the unfinished day today so we always have
-            // n of full older days
-            if (days.indexOf(day) === -1) { 
-                if (days.length > n) {
-                    // then truncate the array and be done
-                    array.length = i;
-                    return;
-                } else {
-                    days.push(day);
-                }
-            }
-        }
-        
-    }
-
-    // truncate arrays to max number of days of data
-    truncateToNumberOfDays(data.temperatures, config.temperatureRetentionDays);
-    truncateToNumberOfDays(data.fanOnOffEvents, config.fanEventRetentionDays);
-}
-
 function poll() {
     Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).then(function(temps) {
-        var dataTemps = data.temperatures, len = dataTemps.length, 
-            recordTemp = true,
+        var recordTemp = true,
             // round to one decimal and add in calibration factor
             atticTemp = Math.round((temps[0] + config.thermometerInfo.atticCalibration) * 10) / 10, 
             outsideTemp = Math.round((temps[1] + config.thermometerInfo.outsideCalibration) * 10) / 10;
         
-        console.log("attic temp = " + atticTemp + ", outside temp = " + outsideTemp);
         
-        if (len) {
-            var lastTemps = dataTemps[len - 1];
+        var lastTemps = data.getTemperatureItem(-1);
+        if (lastTemps) {
             // if neither temp has changed since we last saved a temp, then don't record it
             // temps are rounded to 0.1 degree C so it has to change a meaningful amount to get recorded
             if (lastTemps.atticTemp === atticTemp && lastTemps.outsideTemp === outsideTemp) {
@@ -399,14 +440,19 @@ function poll() {
             }
         }
         if (recordTemp) {
-            dataTemps.push({t: now(), atticTemp: atticTemp, outsideTemp: outsideTemp});
+            data.addTemperature(atticTemp, outsideTemp);
         }
+
         // make sure fan setting is set appropriately
         setFan(checkFanAction(atticTemp, outsideTemp));
         
         // age any data that needs to be thrown away
-        ageData();
+        data.ageData();
         
+        console.log(new Date().toString().replace(/\s*GMT.*$/, "") + ": attic temp = " + atticTemp + 
+            ", outside temp = " + outsideTemp + ", len=" + data.getTemperatureLength() + 
+            ", data recorded = " + recordTemp);
+                
     }, function(err) {
         console.log("promise rejected on temperature fetch: " + err);
     });

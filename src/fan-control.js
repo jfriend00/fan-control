@@ -45,12 +45,12 @@ hbs.registerHelper("formatTemp", function(temp, units) {
 
 // define page routes
 app.get('/', function(request, response) {
-    var temp = data.getTemperatureItem(-1);
+    var item = data.getTemperatureItem(-1);
     var tempData = {
-        tAtticC: temp.atticTemp, 
-        tAtticF: toFahrenheitStr(temp.atticTemp),
-        tOutsideC: temp.outsideTemp,
-        tOutsideF: toFahrenheitStr(temp.outsideTemp),
+        tAtticC: item.atticTemp, 
+        tAtticF: toFahrenheitStr(item.atticTemp),
+        tOutsideC: item.outsideTemp,
+        tOutsideF: toFahrenheitStr(item.outsideTemp),
         units: request.cookies.temperatureUnits
     };
     response.render('index', tempData);    
@@ -76,7 +76,7 @@ app.get('/debug', function(request, response) {
 app.get('/chart', function(request, response) {
     var tempData = {
         // todo - trim the data down
-        temperatures: util.inspect(data.temperatures, {depth: null}),
+        temperatures: JSON.stringify(data.temperatures),
         units: request.cookies.temperatureUnits
     };
     response.render('chart', tempData);
@@ -328,11 +328,28 @@ var data = {
         return this.temperatures.length;
     },
     
+    // iterate temperatures with callback
+    // assumes temperature array is not modified during iteration other than adding onto the end
+    eachTemperature: function(fn) {
+        var retVal;
+        for (var i = 0, len = this.temperatures.length; i < len; i++) {
+            retVal = fn(this.temperatures[i]);
+            if (retVal === true) {
+                return;
+            }
+        }
+    },
+    
     /* This is a sample iteration of temperature data 
     var item;
     for (var i = 0, len = data.getTemperatureLength(), i < len; i++) {
         item = data.getTemperatureItem(i);
     }
+    
+    // or this
+    data.eachTemperature(function(item) {
+        // do something with item here
+    });
     */
     
     init: function(filename, writeTime) {

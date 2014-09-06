@@ -1,11 +1,12 @@
 "use strict";
-var fs = require('fs');
 var Promise = require('bluebird');
+var fs = Promise.promisifyAll(require('fs'));
 var express = require('express');
 var hbs = require('hbs');
 var gpio = require('gpio');
 var cookieParser = require('cookie-parser');
-var util = require('util');
+
+initFS();
 
 var app = express();
 
@@ -218,11 +219,19 @@ var data = {
     fanOn: false,           // current fan state
     temperatures: [],       // array of {t: dateTime, atticTemp: temp, outsideTemp: temp}
     lastFanChangeTime: 0,   // last time we changed the fan setting
-    lastDataWriteTime: 0,    // last time data was saved to SD card
+    lastDataWriteTime: 0,   // last time data was saved to SD card
+    dataBlock: false,       // true means we're doing an async save of the data so no modifications
 
     // sync argument should only be used in shut-down situation
+    // temperatures data format
+    // time, atticTemp, outsideTemp
+    // nnnnn, t1, t2
     writeData: function(filename, sync) {
+        var fileMode = {mode: 438, encoding: 'utf8'};
+        var self = this;
+        
         sync = sync || false;
+        
         try {
             var saveData = {};
             saveData.fanOnOffEvents = data.fanOnOffEvents;
@@ -230,17 +239,140 @@ var data = {
             var theData = JSON.stringify(saveData);
             if (sync) {
                 // note: 438 decimal mode is to give everyone read and write privileges
-                fs.writeFileSync(filename, theData, {mode: 438, encoding: 'utf8'});
+                fs.writeFileSync(filename, theData, fileMode);
             } else {
                 // note: when this file is created, it must be given rw rights to everyone
                 // so that it can be written to upon SIGINT to save our data on shut-down
                 // presumably, the process isn't running at normal privileges upon shutdown
-                fs.writeFile(filename, JSON.stringify(saveData), {mode: 438, encoding: 'utf8'}, function(err) {
+                fs.writeFile(filename, JSON.stringify(saveData), fileMode, function(err) {
+                    // FIXME: this exception won't get caught locally
                     if (err) throw err;
                 });
             }
         } catch(e) {
             console.log(e, "data.writeData() - error writing data");
+        }
+        
+        // TODO - with async writes here, it is possible for the next manipulation of the
+        // temperature array to happen while we are in the middle of writing it to disk
+        // Need to figure out what to do about that
+        
+        // write new data format
+        // each section starts with [title]
+        // The title is followed by a JSON description of the format
+        // Then, you have comma delimited rows of data, one row per line
+        // [temperatures] {"formatVersion": "1", "fields": ["t", "atticTemp", "outsideTemp"]}
+        // 927349724972, 29.8, 23.6
+        // 927349725190, 29.9, 23.5
+        
+        /*
+        
+        function writeTemperatureRows(fd, index, num, callback) {
+            var data = [], item;
+            for (var i = index; i < index + num && i < self.temperatures.length; i++) {
+                item = self.temperatures[i];
+                data.push(item.t + ", " + item.atticTemp + ", " + item.outsideTemp + "\r\n");
+            }
+            data = new Buffer(data.join(""));
+            fs.write(fd, data, 0, data.length, null, callback);
+        }
+        
+        // FIXME: try/catch doesn't work for embedded async calls
+        // FIXME: concurrency issues here - data can be modified while we are writing it
+        try {
+            var header = new Buffer('[temperatures] {"formatVersion": "1", "fields": ["t", "atticTemp", "outsideTemp"]}\r\n');
+            // FIXME: temporary filename while debugging to avoid overwriting actual filename
+            filename += ".new";
+            console.log("write started");
+            fs.open(filename, "w", 438, function(err, fd) {
+                if (err) throw err;
+                fs.write(fd, header, 0, header.length, null, function(err) {
+                    if (err) throw err;
+                    var rowsToWriteAtOnce = 100;
+                    // now write out all the data
+                    var index = 0;
+                    
+                    function next() {
+                        if (index < self.temperatures.length) {
+                            writeTemperatureRows(fd, index, rowsToWriteAtOnce, function(err) {
+                                if (err) throw err;
+                                index += rowsToWriteAtOnce;
+                                next();
+                            });
+                        } else {
+                            // done writing temperatures, now write on/off events
+                            fs.close(fd, function() {
+                                console.log("write finished");
+                            });
+                        }
+                    }
+                    next();
+                    
+                    
+                });
+            });
+            
+        } catch(e) {
+            // FIXME - this doesn't catch exceptions thrown during async callbacks
+            console.log(e, "data.writeData() - error writing data (new format)");
+        }
+        
+        */
+        
+        function writeTemperatureRows(fd, index, num) {
+            var data = [], item;
+            for (var i = index; i < index + num && i < self.temperatures.length; i++) {
+                item = self.temperatures[i];
+                data.push(item.t + ", " + item.atticTemp + ", " + item.outsideTemp + "\r\n");
+            }
+            data = new Buffer(data.join(""));
+            return fs.writeAsyncCheck(fd, data);
+        }
+        
+        if (!sync && !self.dataBlock) {
+            self.dataBlock = true;
+            var header = new Buffer('[temperatures] {"formatVersion": "1", "fields": ["t", "atticTemp", "outsideTemp"]}\r\n');
+            filename = filename.replace(".txt", "-new.txt");
+            var start = now();
+            console.log("async write started");
+            var fd;
+            fs.openAsync(filename, "w", 438).then(function(ffd) {
+                fd = ffd;
+                return fs.writeAsyncCheck(fd, header);
+            }).then(function() {
+                // algorithm, return an unresolved promise that will be resolved
+                // only when we're done writing out all our data
+                return new Promise(function(resolve, reject) {
+                    var rowsToWriteAtOnce = 100;
+                    // now write out all the data
+                    var index = 0;
+                    
+                    function next() {
+                        if (index < self.temperatures.length) {
+                            writeTemperatureRows(fd, index, rowsToWriteAtOnce).then(function(args /* [written, buffer] */) {
+                                index += rowsToWriteAtOnce;
+                                next();
+                            }).catch(function() {
+                                reject("write error");
+                            });
+                        } else {
+                            resolve();
+                        }
+                    }
+                    next();
+                });
+                
+            }).then(function() {
+                return fs.closeAsync(fd);
+            }).then(function() {
+                fd = null;
+                self.dataBlock = false;
+                console.log("async write finished - elapsed = " + ((now() - start) / 1000));
+            }).catch(function(e) {
+                if (fd) fs.closeAsync(fd);
+                self.dataBlock = false;
+                console.log(e, "data.writeData() - error writing data (new format)");
+            });
         }
     },
     
@@ -364,7 +496,10 @@ var data = {
 };
 
 // initialize data
-data.init(config.dataFilename, config.dataSaveTime);
+//data.init(config.dataFilename, config.dataSaveTime);
+
+// FIXME: for debugging purposes, set write time low
+data.init(config.dataFilename, 20 * 1000);
 
 // setup process exit handlers so we write our data
 process.on('exit', function(code) {
@@ -495,8 +630,53 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
         data.writeData(config.dataFilename, true);
         
         console.log("daily 4am exit - forever daemon should restart us");
-        exit(0);
+        process.exit(1);
     }, t);
     
     
 })();
+
+function initFS() {
+    // wrapper function to allow optional args
+    // and to check if all bytes were written
+    fs.writeAsyncCheck = function(fd, data, offset, len, position) {
+        // allow position, len and offset arguments to be optional
+        if (position === undefined) {
+            position = null;
+            if (len === undefined) {
+                len = data.length;
+                if (offset === undefined) {
+                    offset = 0;
+                }
+            }
+        }
+        return new Promise(function(resolve, reject) {
+            fs.writeAsync(fd, data, offset, len, position).then(function(args /* [written, buffer] */) {
+                var written = args[0];
+                if (written !== len) {
+                    reject(new Error("expected to write " + len + " bytes, but only wrote " + written + " bytes."));
+                } else {
+                    resolve(args);
+                }
+            });
+        });
+    };
+    
+    fs.writeSyncCheck = function(fd, data, offset, len, position) {
+        // allow position, len and offset arguments to be optional
+        if (position === undefined) {
+            position = null;
+            if (len === undefined) {
+                len = data.length;
+                if (offset === undefined) {
+                    offset = 0;
+                }
+            }
+        }
+        var written = fs.writeSync(fd, data, offset, len, position);
+        if (written !== len) {
+            throw new Error("expected to write " + len + " bytes, but only wrote " + written + " bytes.");
+        }
+        return written;
+    };
+}

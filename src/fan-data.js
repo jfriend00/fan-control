@@ -1,6 +1,7 @@
 "use strict";
 var Promise = require('bluebird');
 var fs = Promise.promisifyAll(require('fs'));
+var lineReader = require('./line-reader.js');
 
 initFS();
 
@@ -52,6 +53,7 @@ var data = {
             console.log(e, "data.writeData() - error writing data");
         }
         
+        
         // can't write data out while it's already blocked for any reason
         if (self.dataBlock) {
             console.log("hit data block");
@@ -74,7 +76,7 @@ var data = {
             var data = [], item, limit = Math.min(index + num, self.temperatures.length);
             for (var i = index; i < limit; i++) {
                 item = self.temperatures[i];
-                data.push(item.t + ", " + item.atticTemp + ", " + item.outsideTemp + "\r\n");
+                data.push(item.t + "," + item.atticTemp + "," + item.outsideTemp + "\r\n");
             }
             return fs.writeAsyncCheck(fd, data.join(""));
         }
@@ -83,41 +85,59 @@ var data = {
             var data = [], item, limit = Math.min(index + num, self.fanOnOffEvents.length);
             for (var i = index; i < limit; i++) {
                 item = self.fanOnOffEvents[i];
-                data.push(item.t + ", " + item.event + "\r\n");
+                data.push(item.t + "," + item.event + "\r\n");
             }
             return fs.writeAsyncCheck(fd, data.join(""));
         }
 
-        // todo: write to a temp filename and then do renames at end
-        var fd, item, err = false;
+        var fd, item, i;
+        // TODO: change to use the real filename
         filename = filename.replace(".txt", "-new.txt");
         var tempHeader = '[temperatures] {"formatVersion": "1", "fields": ["t", "atticTemp", "outsideTemp"]}\r\n';
         var fanHeader = '[fanOnOff] {"formatVersion": "1", "fields": ["t", "event"]}\r\n';
+        var tempFilename = filename.replace(/txt$/, "tmp");        
         
         if (sync) {
             // synchronous saving, called upon process exit only
             try {
                 self.dataBlock = true;
-                fd = fs.openSync(filename, "w", 438);
+                fd = fs.openSync(tempFilename, "w", 438);
                 fs.writeSyncCheck(fd, tempHeader);
-                for (var i = 0; i < self.temperatures.length; i++) {
+                for (i = 0; i < self.temperatures.length; i++) {
                     item = self.temperatures[i];
-                    fs.writeSyncCheck(fd, new Buffer(item.t + ", " + item.atticTemp + ", " + item.outsideTemp + "\r\n"));
+                    fs.writeSyncCheck(fd, new Buffer(item.t + "," + item.atticTemp + "," + item.outsideTemp + "\r\n"));
                 }
                 // now write on/off data here
                 fs.writeSyncCheck(fd, fanHeader);
-                for (var i = 0; i < self.fanOnOffEvents.length; i++) {
+                for (i = 0; i < self.fanOnOffEvents.length; i++) {
                     item = self.fanOnOffEvents[i];
-                    fs.writeSyncCheck(fd, new Buffer(item.t + ", " + item.event + "\r\n"));
+                    fs.writeSyncCheck(fd, new Buffer(item.t + "," + item.event + "\r\n"));
                 }
+                fs.closeSync(fd);
+                fd = null;
+                // now do rename of the temp file
+                try {
+                    fs.unlinkSync(filename);
+                } catch(e) {
+                    // if it failed for any reason other than because it didn't exist
+                    // then rethrow the error so it gets reported in the logs
+                    if (e.code !== "ENOENT") {
+                        throw e;
+                    }
+                }
+                fs.renameSync(tempFilename, filename);
             } catch(e) {
-                err = true;
                 console.log(e, "Error writing data - sync");
             } finally {
-                fs.closeSync(fd);
-                // if err while writing, clean up the file
-                if (err) {
-                    fs.unlinkSync(filename);
+                // if file wasn't yet closed, then it's a partial file
+                // so we have to close it and get rid of it
+                if (fd) {
+                    try {
+                        fs.closeSync(fd);
+                        fs.unlinkSync(tempFilename);
+                    } catch(e) {
+                        console.log(e, "Error cleaning up on writeData");
+                    }
                 }
                 self.dataBlock = false;
             }
@@ -127,7 +147,7 @@ var data = {
             self.dataBlock = true;
             var start = Date.now();
             console.log("async write started");
-            fs.openAsync(filename, "w", 438).then(function(ffd) {
+            fs.openAsync(tempFilename, "w", 438).then(function(ffd) {
                 fd = ffd;
                 // write temperature data header
                 return fs.writeAsyncCheck(fd, tempHeader);
@@ -168,7 +188,7 @@ var data = {
                     
                     function next() {
                         if (index < self.fanOnOffEvents.length) {
-                            writeTemperatureRowsAsync(fd, index, rowsToWriteAtOnce).then(function(args /* [written, buffer] */) {
+                            writeFanOnOffRowsAsync(fd, index, rowsToWriteAtOnce).then(function(args /* [written, buffer] */) {
                                 index += rowsToWriteAtOnce;
                                 next();
                             }).catch(function() {
@@ -184,19 +204,111 @@ var data = {
                 return fs.closeAsync(fd);
             }).then(function() {
                 fd = null;
-                console.log("async write finished - elapsed = " + ((Date.now() - start) / 1000));
+                // rename files
+                return new Promise(function(resolve, reject) {
+                    fs.unlinkAsync(filename).catch(function(e) {
+                        if (e.code !== "ENOENT") {
+                            console.log(e, "Error removing old data file on writeData Async");
+                        }
+                    }).finally(function() {
+                        fs.renameAsync(tempFilename, filename).catch(function(e) {
+                            console.log(e, "Error on rename in writeData Async");
+                        }).finally(resolve);
+                    });
+                });                
             }).catch(function(e) {
-                if (fd) fs.closeAsync(fd);
+                // if we got an error here, then close the file and remove it
                 console.log(e, "data.writeData() - error writing data (new format)");
+                fs.closeAsync(fd).then(function() {
+                    return fs.unlinkAsync(tempFilename);
+                }).catch(function() {
+                    console.log("Error cleaning up on .catch() from writeData");
+                });
             }).finally(function() {
                 console.log("clearing dataBlock");
+                console.log("async write finished - elapsed = " + ((Date.now() - start) / 1000));
                 self.dataBlock = false;
             });
         }
     },
     
+    readData2: function(filename) {
+        // read in the new format:
+        var self = this;
+        try {
+            var sectionStart = /^\[(.*?)\]\s+(\{.*\})/;
+            var matches, line, fn;
+            
+            var processors = {
+                temperatures: function(line) {
+                    // 1409778007274, 25.5, 24.9
+                    var valid = false;
+                    var items = line.split(",");
+                    if (items.length >= 3) {
+                        // convert all values to numbers
+                        var t = parseInt(items[0].trim(), 10);
+                        var tAttic = +items[1].trim();
+                        var tOutside = +items[2].trim();
+                        if (t && tAttic && tOutside) {
+                            valid = true;
+                            // self.addTemperature(tAttic, tOutside, t);
+                        }
+                    if (!valid)
+                        console.log("Unexpected or missing data while processing temperature line: " + line);
+                    }
+                },
+                fanOnOff: function(line) {
+                    // 1409778007274, on
+                    var valid = false;
+                    var items = line.split(",");
+                    if (items.length >= 2) {
+                        var t = parseInt(items[0].trim(), 10);
+                        var event = items[1].toLowerCase();
+                        if (t && (event === "on" || event === "off")) {
+                            valid = true;
+                            // self.addOnOffEvent(event, t);
+                        }
+                    }
+                    if (!valid) {
+                        console.log("Unexpected or missing data while processing fan event line: " + line);
+                    }
+                },
+                dummy: function() {}
+            };
+            
+            var fname2 = filename.replace(".txt", "-new.txt");
+            var lr = new lineReader(fname2);
+            while ((line = lr.readLineSync()) !== null) {
+                matches = line.match(sectionStart);
+                if (!matches) {
+                    if (fn) {
+                        // ignore empty lines
+                        if (line.trim()) {
+                            fn(line);
+                        }
+                    } else {
+                        throw new Error("Expected section start in readData");
+                    }
+                } else {
+                    // section start
+                    fn = processors[matches[1]];  
+                    console.log("section start: " + matches[1]);
+                    if (!fn) {
+                        console.log("Unknown section: " + matches[1] + " - skipping section");
+                        fn = processors.dummy;
+                    }
+                }
+            }
+        } catch(e) {
+            if (e.code !== "ENOENT") {
+                console.log(e, "lineReader error");
+            }
+        }
+    },
+    
     // this is only synchronous - only used at startup
     readData: function(filename) {
+        this.readData2(filename);
         try {
             var theData = JSON.parse(fs.readFileSync(filename, 'utf8'));
             // sanity check to see that the saved data is there
@@ -259,6 +371,11 @@ var data = {
     addTemperature: function(tAttic, tOutside, time) {
         time = time || Date.now();
         this.temperatures.push({t: time, atticTemp: tAttic, outsideTemp: tOutside});
+    },
+    
+    addFanOnOffEvent: function(event, time) {
+        time = time || Date.now();
+        this.fanOnOffEvents.push({t: time, event: event});
     },
     
     // negative numbers are from end (so -1 gives last item)
@@ -339,6 +456,7 @@ function initFS() {
                 }
             }
         }
+        var str = data;
         if (!(data instanceof Buffer)) {
             data = new Buffer(data);
         }
@@ -353,6 +471,7 @@ function initFS() {
                 }
             }).catch(function(e) {
                 console.log(e, "fs.writeAsync threw");
+                console.log('"' + str + '"');
                 reject(e);
             });
         });

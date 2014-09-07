@@ -9,28 +9,42 @@ module.exports = function(fname, readSize) {
     var data = "";
     var fd = fs.openSync(fname, "r");
     var done = false;
+    
+    // if you read to the end, the file will auto-close
+    // so this does not need to be called
+    this.close = function() {
+        data = "";
+        buffer = null;
+        done = true;
+        if (fd) {
+            fs.closeSync(fd);
+            fd = null;
+        }
+    }
 
     this.readLineSync = function() {
-        var result;
-        if (done) { return null; }
+        try {
+            var result;
+            if (done) { return null; }
 
-        var pos, bytesRead = 1;
-        while ((pos = data.indexOf('\n')) === -1 && bytesRead > 0) {
-            bytesRead = fs.readSync(fd, buffer, 0, readSize, null);
-            data += buffer.slice(0, bytesRead).toString();
-        }
-        if (pos !== -1) {
-            result = data.slice(0, pos + 1).replace(/[\r\n]/g, "");
-            data = data.slice(pos + 1);
-        } else {
-            // wrap up last data
-            // close file
-            // clear up any storage
-            result = data;
-            data = "";
-            buffer = null;
-            done = true;
-            fs.closeSync(fd);
+            var pos, bytesRead = 1;
+            while ((pos = data.indexOf('\n')) === -1 && bytesRead > 0) {
+                bytesRead = fs.readSync(fd, buffer, 0, readSize, null);
+                data += buffer.slice(0, bytesRead).toString();
+            }
+            if (pos !== -1) {
+                result = data.slice(0, pos + 1).replace(/[\r\n]/g, "");
+                data = data.slice(pos + 1);
+            } else {
+                result = data;
+                this.close();
+            }
+        } catch(e) {
+            // clean up, then rethrow
+            if (fd) {
+                this.close();
+            }
+            throw e;
         }
         return result;
     };

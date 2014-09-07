@@ -20,7 +20,7 @@ module.exports = function(fname, readSize) {
             data += buffer.slice(0, bytesRead).toString();
         }
         if (pos !== -1) {
-            result = data.slice(0, pos + 1).replace(/\r\n/g, "");
+            result = data.slice(0, pos + 1).replace(/[\r\n]/g, "");
             data = data.slice(pos + 1);
         } else {
             // wrap up last data

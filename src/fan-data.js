@@ -4,8 +4,6 @@ var fs = Promise.promisifyAll(require('fs'));
 
 initFS();
 
-
-
 // system initialization boots up with the fan off so that is always the initial state
 // lastFanChangeTime is initialized to zero so there are no limitations on turning the fan on initially
 // fanOnOffEvents and temperatures are stored on disk and reread from disk at boot up

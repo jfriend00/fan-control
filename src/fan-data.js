@@ -27,34 +27,9 @@ var data = {
     writeData: function(filename, sync) {
         // let everyone read the file
         var filePermissions = 438;
-        var fileMode = {mode: filePermissions, encoding: 'utf8'};
         var self = this;
-        
         sync = sync || false;
 
-/*         
-        try {
-            var saveData = {};
-            saveData.fanOnOffEvents = data.fanOnOffEvents;
-            saveData.temperatures = data.temperatures;
-            var theData = JSON.stringify(saveData);
-            if (sync) {
-                // note: 438 decimal mode is to give everyone read and write privileges
-                fs.writeFileSync(filename, theData, fileMode);
-            } else {
-                // note: when this file is created, it must be given rw rights to everyone
-                // so that it can be written to upon SIGINT to save our data on shut-down
-                // presumably, the process isn't running at normal privileges upon shutdown
-                fs.writeFile(filename, JSON.stringify(saveData), fileMode, function(err) {
-                    // FIXME: this exception won't get caught locally
-                    if (err) throw err;
-                });
-            }
-        } catch(e) {
-            console.log(e, "data.writeData() - error writing data");
-        }
-*/        
-        
         // can't write data out while it's already blocked for any reason
         if (self.dataBlock) {
             console.log("hit data block");
@@ -100,7 +75,7 @@ var data = {
             // synchronous saving, called upon process exit only
             try {
                 self.dataBlock = true;
-                fd = fs.openSync(tempFilename, "w", 438);
+                fd = fs.openSync(tempFilename, "w", filePermissions);
                 fs.writeSyncCheck(fd, tempHeader);
                 for (i = 0; i < self.temperatures.length; i++) {
                     item = self.temperatures[i];
@@ -146,7 +121,7 @@ var data = {
             self.dataBlock = true;
             var start = Date.now();
             console.log("async write started");
-            fs.openAsync(tempFilename, "w", 438).then(function(ffd) {
+            fs.openAsync(tempFilename, "w", filePermissions).then(function(ffd) {
                 fd = ffd;
                 // write temperature data header
                 return fs.writeAsyncCheck(fd, tempHeader);
@@ -303,24 +278,6 @@ var data = {
             }
         }
     },
-    
-/*    
-    // this is only synchronous - only used at startup
-    readDataOld: function(filename) {
-        try {
-            var theData = JSON.parse(fs.readFileSync(filename, 'utf8'));
-            // sanity check to see that the saved data is there
-            if (theData.fanOnOffEvents && theData.temperatures) {
-                data.fanOnOffEvents = theData.fanOnOffEvents;
-                data.temperatures = theData.temperatures;
-            }
-        } catch(e) {
-            if (e.code !== 'ENOENT') {
-                console.log("data.readData() - error reading data");
-            }
-        }
-    },
-*/    
     
     ageData: function() {
         // see if there are just too many temperatures retained

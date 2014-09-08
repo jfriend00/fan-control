@@ -31,7 +31,8 @@ var data = {
         var self = this;
         
         sync = sync || false;
-        
+
+/*         
         try {
             var saveData = {};
             saveData.fanOnOffEvents = data.fanOnOffEvents;
@@ -52,7 +53,7 @@ var data = {
         } catch(e) {
             console.log(e, "data.writeData() - error writing data");
         }
-        
+*/        
         
         // can't write data out while it's already blocked for any reason
         if (self.dataBlock) {
@@ -91,8 +92,6 @@ var data = {
         }
 
         var fd, item, i;
-        // TODO: change to use the real filename
-        filename = filename.replace(".txt", "-new.txt");
         var tempHeader = '[temperatures] {"formatVersion": "1", "fields": ["t", "atticTemp", "outsideTemp"]}\r\n';
         var fanHeader = '[fanOnOff] {"formatVersion": "1", "fields": ["t", "event"]}\r\n';
         var tempFilename = filename.replace(/txt$/, "tmp");        
@@ -232,7 +231,7 @@ var data = {
         }
     },
     
-    readData2: function(filename) {
+    readData: function(filename) {
         // read in the new format:
         var self = this;
         try {
@@ -251,7 +250,7 @@ var data = {
                         var tOutside = +items[2].trim();
                         if (t && tAttic && tOutside) {
                             valid = true;
-                            // self.addTemperature(tAttic, tOutside, t);
+                            self.addTemperature(tAttic, tOutside, t);
                         }
                     if (!valid)
                         console.log("Unexpected or missing data while processing temperature line: " + line);
@@ -266,7 +265,7 @@ var data = {
                         var event = items[1].toLowerCase();
                         if (t && (event === "on" || event === "off")) {
                             valid = true;
-                            // self.addOnOffEvent(event, t);
+                            self.addOnOffEvent(event, t);
                         }
                     }
                     if (!valid) {
@@ -276,8 +275,7 @@ var data = {
                 dummy: function() {}
             };
             
-            var fname2 = filename.replace(".txt", "-new.txt");
-            var lr = new lineReader(fname2);
+            var lr = new lineReader(filename);
             while ((line = lr.readLineSync()) !== null) {
                 matches = line.match(sectionStart);
                 if (!matches) {
@@ -306,9 +304,9 @@ var data = {
         }
     },
     
+/*    
     // this is only synchronous - only used at startup
-    readData: function(filename) {
-        this.readData2(filename);
+    readDataOld: function(filename) {
         try {
             var theData = JSON.parse(fs.readFileSync(filename, 'utf8'));
             // sanity check to see that the saved data is there
@@ -322,6 +320,7 @@ var data = {
             }
         }
     },
+*/    
     
     ageData: function() {
         // see if there are just too many temperatures retained

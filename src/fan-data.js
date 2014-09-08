@@ -15,6 +15,7 @@ var data = {
     lastFanChangeTime: 0,   // last time we changed the fan setting
     lastDataWriteTime: 0,   // last time data was saved to SD card
     dataBlock: false,       // true means we're doing an async save of the data so no modifications
+    queue: [],              // queued up function calls when dataBlock prevented direct addition
     config: {
         temperatureRetentionMaxItems: 5000,     // set from config with data.init()
     },
@@ -120,7 +121,7 @@ var data = {
             console.log("setting dataBlock");
             self.dataBlock = true;
             var start = Date.now();
-            console.log("async write started");
+            console.log("    async write started");
             fs.openAsync(tempFilename, "w", filePermissions).then(function(ffd) {
                 fd = ffd;
                 // write temperature data header
@@ -199,9 +200,12 @@ var data = {
                     console.log("Error cleaning up on .catch() from writeData");
                 });
             }).finally(function() {
+                console.log("    async write finished - elapsed = " + ((Date.now() - start) / 1000));
                 console.log("clearing dataBlock");
-                console.log("async write finished - elapsed = " + ((Date.now() - start) / 1000));
                 self.dataBlock = false;
+                
+                // process any events that were blocked while we were writing the data
+                self.processQueue();
             });
         }
     },
@@ -265,7 +269,6 @@ var data = {
                 } else {
                     // section start
                     fn = processors[matches[1]];  
-                    console.log("section start: " + matches[1]);
                     if (!fn) {
                         console.log("Unknown section: " + matches[1] + " - skipping section");
                         fn = processors.dummy;
@@ -279,59 +282,110 @@ var data = {
         }
     },
     
-    ageData: function() {
-        // see if there are just too many temperatures retained
-        // this is to protect memory usage in case temperature varies wildly
-        // so we are recording too many data points
-        // oldest items are at the beginning of the array so remove from the beginning
-        var temps = this.temperatures;
-        var numToRemove = temps.length - this.config.temperatureRetentionMaxItems;
-        if (numToRemove > 0) {
-            // this avoids making a copy of the data (good for memory usage reasons)
-            if (numToRemove === 1) {
-                // .shift() is 3x faster than .splice() and is the common use case
-                temps.shift();
-            } else {
-                temps.splice(0, numToRemove);
+    // process any functions in the queue
+    // if data isn't blocked
+    processQueue: function() {
+        if (!this.dataBlock && this.queue.length) {
+            console.log("running queued functions");
+            // this assumes all queued operations are synchronous
+            // thus we don't have to check for dataBlock after each one
+            // it will tolerate new queued functions being added while running others
+            for (var i = 0; i < this.queue.length; i++) {
+                this.queue[i]();
             }
+            // clear the queue
+            this.queue.length = 0;
         }
-
-        // assumes each array element is an object with a .t property
-        function truncateToNumberOfDays(array, n) {
-            // keep track of each unique day of data we encounter
-            var days = [];
-            for (var i = 0, len = array.length; i < len; i++) {
-                var day = getDayT(array[i].t);
-                // if day is not already in our array and we've reach the max number of days
-                // allow one extra day for the unfinished day today so we always have
-                // n of full older days
-                if (days.indexOf(day) === -1) { 
-                    if (days.length > n) {
-                        // then truncate the array and be done
-                        array.length = i;
-                        return;
-                    } else {
-                        days.push(day);
-                    }
+    },
+    
+    ageData: function() {
+    
+        function run() {
+             /*jshint validthis:true */
+             
+            // see if there are just too many temperatures retained
+            // this is to protect memory usage in case temperature varies wildly
+            // so we are recording too many data points
+            // oldest items are at the beginning of the array so remove from the beginning
+            var temps = this.temperatures;
+            var numToRemove = temps.length - this.config.temperatureRetentionMaxItems;
+            if (numToRemove > 0) {
+                // this avoids making a copy of the data (good for memory usage reasons)
+                if (numToRemove === 1) {
+                    // .shift() is 3x faster than .splice() and is the common use case
+                    temps.shift();
+                } else {
+                    temps.splice(0, numToRemove);
                 }
             }
-        
-        }
 
-        // truncate arrays to max number of days of data
-        truncateToNumberOfDays(temps, this.config.temperatureRetentionDays);
-        truncateToNumberOfDays(this.fanOnOffEvents, this.config.fanEventRetentionDays);
+            // assumes each array element is an object with a .t property
+            // FIXME: this needs to process the array from backwards to frontwards
+            function truncateToNumberOfDays(array, n) {
+                // keep track of each unique day of data we encounter
+                var days = [];
+                for (var i = 0, len = array.length; i < len; i++) {
+                    var day = getDayT(array[i].t);
+                    // if day is not already in our array and we've reach the max number of days
+                    // allow one extra day for the unfinished day today so we always have
+                    // n of full older days
+                    if (days.indexOf(day) === -1) { 
+                        if (days.length > n) {
+                            // then truncate the array and be done
+                            array.length = i;
+                            return;
+                        } else {
+                            days.push(day);
+                        }
+                    }
+                }
+            
+            }
+
+            // truncate arrays to max number of days of data
+            truncateToNumberOfDays(temps, this.config.temperatureRetentionDays);
+            truncateToNumberOfDays(this.fanOnOffEvents, this.config.fanEventRetentionDays);
+        }
+        
+        if (this.dataBlock) {
+            console.log("hit dataBlock on ageData() - queueing");
+            this.queue.push(run.bind(this));
+        } else {
+            run.call(this);
+        }
     },
     
     // time is optional - if not passed, the current time will be used
     addTemperature: function(tAttic, tOutside, time) {
+        var self = this;
         time = time || Date.now();
-        this.temperatures.push({t: time, atticTemp: tAttic, outsideTemp: tOutside});
+        
+        function add() {
+            self.temperatures.push({t: time, atticTemp: tAttic, outsideTemp: tOutside});
+        }
+        
+        if (this.dataBlock) {
+            console.log("hit dataBlock on addTemperature() - queueing");
+            this.queue.push(add);
+        } else {
+            add();
+        }
     },
     
     addFanOnOffEvent: function(event, time) {
+        var self = this;
         time = time || Date.now();
-        this.fanOnOffEvents.push({t: time, event: event});
+        
+        function add() {
+            self.fanOnOffEvents.push({t: time, event: event});
+        }
+        
+        if (this.dataBlock) {
+            console.log("hit dataBlock on addFanOnOffEvent() - queueing");
+            this.queue.push(add);
+        } else {
+            add();
+        }
     },
     
     // negative numbers are from end (so -1 gives last item)

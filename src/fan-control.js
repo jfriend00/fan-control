@@ -6,6 +6,7 @@ var hbs = require('hbs');
 var gpio = require('gpio');
 var cookieParser = require('cookie-parser');
 
+
 var data = require('./fan-data.js');
 
 var app = express();
@@ -213,7 +214,7 @@ config.readConfig();
 
 // FIXME: switch to using the actual config.dataSaveTime
 data.init({
-    writeTime: 15 * 1000,
+    writeTime: 19900,
     temperatureRetentionMaxItems: config.temperatureRetentionMaxItems,
     temperatureRetentionDays: config.temperatureRetentionDays,
     fanEventRetentionDays: config.fanEventRetentionDays,

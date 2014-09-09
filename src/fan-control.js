@@ -291,7 +291,7 @@ function poll() {
             atticTemp = Math.round((temps[0] + config.thermometerInfo.atticCalibration) * 10) / 10, 
             outsideTemp = Math.round((temps[1] + config.thermometerInfo.outsideCalibration) * 10) / 10;
         
-        
+
         var lastTemps = data.getTemperatureItem(-1);
         if (lastTemps) {
             // if neither temp has changed since we last saved a temp, then don't record it

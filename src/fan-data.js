@@ -354,6 +354,25 @@ var data = {
             run.call(this);
         }
     },
+
+/*     
+    // generic queue method support
+    addQueueSupport: function(methods) {
+        for (var i = 0; i < methods.length; i++) {
+            (function(name) {
+                var oldMethod = this[name];
+                this[name] = function() {
+                    if (this.dataBlock) {
+                        var args = Array.prototype.slice.call(arguments);
+                        this.queue.push(oldMethod.bind.apply(this, args);
+                    } else {
+                        oldMethod.apply(this, arguments);
+                    }
+                };
+            }).call(this, methods[i]);
+        }
+    },
+*/    
     
     // time is optional - if not passed, the current time will be used
     addTemperature: function(tAttic, tOutside, time) {

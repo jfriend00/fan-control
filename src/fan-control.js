@@ -3,7 +3,7 @@ var Promise = require('bluebird');
 var fs = Promise.promisifyAll(require('fs'));
 var express = require('express');
 var hbs = require('hbs');
-var gpio = require('gpio');
+var gpio = require('pi-gpio');
 var cookieParser = require('cookie-parser');
 
 
@@ -153,8 +153,8 @@ function getTemperature(id) {
 
 var config = {
     thermometerInfo: {
-        atticID: "28-000005cf5a54",
-        outsideID: "28-000005e947e8",
+        outsideID: "28-000005cf5a54",
+        atticID: "28-000005e947e8",
         atticCalibration: 0,                    // correction to apply to attic temperature
         outsideCalibration: 0                   // correction to apply to outside temperature
     },
@@ -212,9 +212,8 @@ var config = {
 // read config from SD card upon initialization
 config.readConfig();
 
-// FIXME: switch to using the actual config.dataSaveTime
 data.init({
-    writeTime: 19900,
+    writeTime: config.dataSaveTime,
     temperatureRetentionMaxItems: config.temperatureRetentionMaxItems,
     temperatureRetentionDays: config.temperatureRetentionDays,
     fanEventRetentionDays: config.fanEventRetentionDays,
@@ -345,3 +344,24 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
     
 })();
 
+
+// Interesting observation.  When your app exists, the GPIO pins you were controlling
+// hold their value forever (until the Pi is shutdown or rebooted).  We may need to turn things
+// off when we exit.
+/*
+// debug code to turn the LED on and off
+(function() {
+    var lastValue = 0;
+    // Pi pins 16 and 18 are the two we're going to use to control the fans
+    var pin = 18;
+    setInterval(function() {
+        ++lastValue;
+        var newVal = lastValue %2;
+        gpio.open(pin, "output", function(err) {        // Open pin 16 for output
+            gpio.write(pin, newVal, function() {        // Set pin 16 high (1)
+                gpio.close(pin);                        // Close pin 16
+            });
+        });        
+    }, 2000);
+})();
+*/

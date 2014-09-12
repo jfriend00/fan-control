@@ -31,6 +31,8 @@ function now() {
 }
 
 var daysRegex = /([?&])days=([.\d]+)/;
+var daysRegex2 = /([?&])days=([.\d]+)(&?)/;
+
 (function() {
 	// initialize number of days from the URL before we draw the chart
 	if (window.location.search.length > 2) {
@@ -41,18 +43,28 @@ var daysRegex = /([?&])days=([.\d]+)/;
 	}
 })();
 
+function updateURL() {
+	if (window.history && window.history.replaceState) {
+		var newURL = makeURL(getDays());
+		if (newURL !== window.location.href) {
+			window.history.replaceState(null, window.title, newURL);
+		}	
+	}
+}
+
 var timer;
 $("#numDays").on("change", function(e) {
 	resetReloadTimer();
 	clearTimeout(timer);
+	updateURL();
 	drawChartGetDays();
 }).on("input", function(e) {
 	// short pause before processing
 	resetReloadTimer();
 	clearTimeout(timer);
-	var self = this;
 	timer = setTimeout(function() {
 		resetReloadTimer();
+		updateURL();
 		drawChartGetDays();
 	}, 500);
 });
@@ -122,6 +134,36 @@ function drawChart(days) {
 }
 $(window).resize(drawChartGetDays);
 
+
+function makeURL(days) {
+	var url = window.location.href;
+	if (days) {
+		if (window.location.search.length < 2) {
+			url = url.replace(/\?$/, "") ;
+			url += "?days=" + days;
+		} else if (window.location.search.match(daysRegex)) {
+			url = url.replace(daysRegex, "$1days=" + days)
+		} else {
+			url += "&days=" + days;
+		}
+	} else {
+		// no days value specified so remove that from the URL entirely
+		var matches = url.match(daysRegex2);
+		if (matches) {
+			// if trailing &
+			if (matches[3]) {
+				// remove everything but first char
+				url = url.replace(daysRegex2, "$1");
+			} else {
+				// remove everything we matched
+				url = url.replace(daysRegex2, "");
+			}
+		}
+		url = url.replace(daysRegex, "$1").replace("?&", "?");
+	}
+	return url;
+}
+
 // reload the page every 10 minutes
 // put chart settings into the URL so they get reloaded too
 var reloadTimer;
@@ -129,17 +171,7 @@ var reloadTimer;
 function resetReloadTimer() {
 	clearTimeout(reloadTimer);
 	reloadTimer = setTimeout(function() {
-		var url = window.location.href;
-		var days = getDays();
-		if (days) {
-			if (window.location.search.length < 2) {
-				url += "?days=" + days;
-			} else if (window.location.search.match(daysRegex)) {
-				url = url.replace(daysRegex, "$1days=" + days)
-			} else {
-				url += "&days=" + days;
-			}
-		}
+		var url = makeURL(getDays());
 		window.location.replace(url);
 	}, 10 * 60 * 1000);
 }

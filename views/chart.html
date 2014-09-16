@@ -80,9 +80,9 @@ function getDays() {
 	}
 }
 
-// convert degrees Celsius to Fahrenheit (rounded to 1 decimal point)
+// convert degrees Celsius to Fahrenheit (rounded to 0.05)
 function toFahrenheit(c) {
-    return Math.round(((c * 9 / 5) + 32) * 10) / 10;
+    return Math.round(((c * 9 / 5) + 32) * 100) / 100;
 }
 
 var useFahrenheit = $.cookie("temperatureUnits") === "F";

@@ -213,7 +213,6 @@ pip-log.txt
 
 #Mr Developer
 .mr.developer.cfg
-run.sh
 forever.init
 test.js
 pi-sd-image.img

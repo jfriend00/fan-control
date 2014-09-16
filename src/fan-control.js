@@ -3,9 +3,8 @@ var Promise = require('bluebird');
 var fs = Promise.promisifyAll(require('fs'));
 var express = require('express');
 var hbs = require('hbs');
-var gpio = require('pi-gpio');
+var gpio = require('./pi-gpio');
 var cookieParser = require('cookie-parser');
-
 
 var data = require('./fan-data.js');
 
@@ -58,7 +57,6 @@ app.get('/', function(request, response) {
     response.render('index', tempData);    
 });
 
-// define our page routes
 app.get('/index', function(request, response) {
     response.render('index', {test: "Hello World"});
 });
@@ -84,8 +82,13 @@ app.get('/chart', function(request, response) {
     response.render('chart', tempData);
 });
 
+// api/
+app.get('/api', function(request, response) {
+    
+});
+
 var server = app.listen(8081, function() {
-    console.log("Server running on port 8081");
+    console.log(new Date().toString() + ": fan-control server started on port 8081");
 });
 
 
@@ -98,7 +101,7 @@ function toFahrenheit(c) {
 // convert degrees Celsius to Fahrenheit
 // return string form rounded to one decimal
 function toFahrenheitStr(c) {
-    return toFahrenheit(c).toFixed(1);
+    return toFahrenheit(c).toFixed(2);
 }
 
 
@@ -167,13 +170,15 @@ var config = {
     temperatureRetentionDays: 7,                // retain N days of temperature data (starting from next midnight transition)
     temperatureRetentionMaxItems: 5000,         // max temp points to retain (to prevent runaway memory usage)
     dataSaveTime: 1000 * 60 * 60,               // save data to SD once per hour    
+    fanPorts: [16, 18],                         // gpio ports to turn the fans on/off (this is Pi numbering, not Broadcom numbering)
+    fanSeparationTime: 60 * 1000,               // time delay between switching each fan
     
     configFilename: "/home/pi/fan-control.cfg",
     dataFilename: "/home/pi/fan-control-data.txt",
     
     saveConfig: function() {
         try {
-            fs.writeFile(this.configFilename, 'utf8', JSON.stringify(this), function(err) {
+            fs.writeFile(this.configFilename, JSON.stringify(this), 'utf8', function(err) {
                 if (err) throw err;
             });
         } catch(e) {
@@ -212,6 +217,19 @@ var config = {
 // read config from SD card upon initialization
 config.readConfig();
 
+// open the GPIO ports
+// Note: the way this code is written, the GPIO ports may not be ready for about 250 ms after this executes
+// Any code that attempts to use them must wait at least that long
+(function() {
+    config.fanPorts.forEach(function(port) {
+        gpio.openGrab(port, function(err) {
+            if (err) {
+                console.log("error opening gpio port " + port + " at startup");
+            }
+        });
+    });
+})();
+
 data.init({
     writeTime: config.dataSaveTime,
     temperatureRetentionMaxItems: config.temperatureRetentionMaxItems,
@@ -227,9 +245,16 @@ process.on('exit', function(code) {
     
     // write data synchronously here
     data.writeData(config.dataFilename, true);
+    
+    // synchronously turn off both fans upon shut-down
+    setFanHardwareOnOff(false, 0, true);
+    
 }).on('SIGINT', function() {
     console.log("SIGINT signal received - exiting");
     process.exit(2);
+}).on('SIGTERM', function() {
+    console.log("SIGTERM signal received - exiting");
+    process.exit(3);
 });
 
 // returns true for fan should be on
@@ -245,6 +270,9 @@ function checkFanAction(atticTemp, outsideTemp) {
     if (data.fanOn) {
         // if fan already on, see if we should turn it off
         // delta has to be less than config.deltaTemp - config.overshoot to turn it off
+        // in other words, the attic has to cool down at least config.overshoot degrees in order
+        // to decide to now turn the fan off.  This keeps it from turning on at config.deltaTemp,
+        // cooling down 0.1 degrees and then turning off (hysteresis)
         if (delta <= (config.deltaTemp - config.overshoot)) {
             return false;
         }
@@ -257,7 +285,7 @@ function checkFanAction(atticTemp, outsideTemp) {
         }
     }
     // don't change fan setting, stay with current setting
-    return (data.fanOn);
+    return data.fanOn;
 }
 
 // set the fan to the desired setting
@@ -268,7 +296,10 @@ function setFan(fanOn) {
         // if we are turning on, we must wait at least config.waitTime from when we turned it off
         // this is to avoid any rapid cycling if temp readings go nuts
         if (!fanOn || (curTime - data.lastFanChangeTime) >= config.waitTime) {
+        
             // set the fan hardware here
+            setFanHardwareOnOff(fanOn, config.fanSeparationTime);
+        
             // and record when we changed it
             data.fanOn = fanOn;
             data.lastFanChangeTime = curTime;
@@ -283,12 +314,56 @@ function setFan(fanOn) {
     
 }
 
+function setFanHardwareOnOff(on, delay, sync) {
+    // make sure val is 1 or 0
+    var val = on ? 1 : 0;
+    var cntr = 0;
+    var fanPorts = config.fanPorts;
+    
+    // ports are assumed to already be opened here by startup code
+    
+    function nextAsync() {
+        if (cntr < fanPorts.length) {
+            var pin = fanPorts[cntr];
+            gpio.write(pin, val, function(err) {
+                if (err) {
+                    console.log("gpio.write() error", err);
+                } else {
+                    ++cntr;
+                    if (delay) {
+                        setTimeout(next, delay);
+                    } else {
+                        nextAsync();
+                    }
+                }
+            });
+        }
+    }
+    
+    
+    // sync is only used on shut-down
+    // delay value is not processed when sync is used
+    if (sync) {
+        for (; cntr < fanPorts.length; cntr++) {
+            try {
+                gpio.writeSync(fanPorts[cntr], val);
+            } catch(e) {
+                console.log("Error on gpio.writeSync()");
+            }
+        }
+    } else {
+        // start the first one asynchronously
+        nextAsync();
+    }
+}
+
+
 function poll() {
     Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).then(function(temps) {
         var recordTemp = true,
             // round to one decimal and add in calibration factor
-            atticTemp = Math.round((temps[0] + config.thermometerInfo.atticCalibration) * 10) / 10, 
-            outsideTemp = Math.round((temps[1] + config.thermometerInfo.outsideCalibration) * 10) / 10;
+            atticTemp = Math.round((temps[0] + config.thermometerInfo.atticCalibration) * 100) / 100, 
+            outsideTemp = Math.round((temps[1] + config.thermometerInfo.outsideCalibration) * 100) / 100;
         
 
         var lastTemps = data.getTemperatureItem(-1);
@@ -309,10 +384,11 @@ function poll() {
         // age any data that needs to be thrown away
         data.ageData();
         
+        /*
         console.log(new Date().toString().replace(/\s*GMT.*$/, "") + ": attic temp = " + atticTemp + 
             ", outside temp = " + outsideTemp + ", len=" + data.getTemperatureLength() + 
             ", data recorded = " + recordTemp);
-                
+        */
     }, function(err) {
         console.log("promise rejected on temperature fetch: " + err);
     });
@@ -345,23 +421,26 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
 })();
 
 
+
 // Interesting observation.  When your app exists, the GPIO pins you were controlling
 // hold their value forever (until the Pi is shutdown or rebooted).  We may need to turn things
 // off when we exit.
-/*
+
+
 // debug code to turn the LED on and off
 (function() {
     var lastValue = 0;
     // Pi pins 16 and 18 are the two we're going to use to control the fans
-    var pin = 18;
+    var pin = 16;
+
     setInterval(function() {
         ++lastValue;
         var newVal = lastValue %2;
-        gpio.open(pin, "output", function(err) {        // Open pin 16 for output
-            gpio.write(pin, newVal, function() {        // Set pin 16 high (1)
-                gpio.close(pin);                        // Close pin 16
-            });
+        gpio.write(pin, newVal, function(err) {        // Set pin 16 high (1)
+            if (err) {
+                console.log("gpio.write error: ", err);
+                return;
+            }
         });        
-    }, 2000);
+    }, 3000);
 })();
-*/

@@ -240,7 +240,7 @@ var data = {
                         var event = items[1].toLowerCase();
                         if (t && (event === "on" || event === "off")) {
                             valid = true;
-                            self.addOnOffEvent(event, t);
+                            self.addFanOnOffEvent(event, t);
                         }
                     }
                     if (!valid) {

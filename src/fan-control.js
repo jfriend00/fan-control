@@ -5,6 +5,8 @@ var express = require('express');
 var hbs = require('hbs');
 var gpio = require('./pi-gpio');
 var cookieParser = require('cookie-parser');
+var bodyParser = require('body-parser')
+var validate = require('./validate');
 
 var data = require('./fan-data.js');
 
@@ -18,15 +20,18 @@ app.use('/img', express.static(__dirname + '/img'));
 // operative site-wide cookies:
 // temperatureUnits: "C" | "F"
 app.use(cookieParser());
-app.use(function(request, response, next) {
+app.use(function(req, res, next) {
     // fill in default values for common cookies so we don't have to do it elsewhere in the code
-    request.cookies.temperatureUnits = request.cookies.temperatureUnits || "C";
+    req.cookies.temperatureUnits = req.cookies.temperatureUnits || "C";
     next();
 });
 
 // set handlebars as view engine
 app.set('view engine', 'html');
 app.engine('html', hbs.__express);
+
+// create body parsers
+var urlencodedParser = bodyParser.urlencoded({ extended: false });
 
 // register template helpers
 hbs.registerHelper("prettifyDate", function(timestamp) {
@@ -45,46 +50,76 @@ hbs.registerHelper("formatTemp", function(temp, units) {
 });
 
 // define page routes
-app.get('/', function(request, response) {
+app.get('/', function(req, res) {
     var item = data.getTemperatureItem(-1);
     var tempData = {
         tAtticC: item.atticTemp, 
         tAtticF: toFahrenheitStr(item.atticTemp),
         tOutsideC: item.outsideTemp,
         tOutsideF: toFahrenheitStr(item.outsideTemp),
-        units: request.cookies.temperatureUnits
+        units: req.cookies.temperatureUnits
     };
-    response.render('index', tempData);    
+    res.render('index', tempData);    
 });
 
-app.get('/index', function(request, response) {
-    response.render('index', {test: "Hello World"});
+app.get('/index', function(req, res) {
+    res.render('index', {test: "Hello World"});
 });
 
-app.get('/settings', function(request, response) {
-    response.render('settings');
+app.route('/settings').get(function(req, res) {
+    var tempData = {
+        minTemp: toFahrenheit(config.minTemp),
+        deltaTemp: toFahrenheitDelta(config.deltaTemp),
+        overshoot: toFahrenheitDelta(config.overshoot),
+        waitTime: config.waitTime / (1000 * 60)
+    }
+    res.render('settings', tempData);
+}).post(urlencodedParser, function(req, res, next) {
+    console.log(req.body);
+    
+    var formatObj = {
+        "minTemp": "FtoC",
+        "deltaTemp": {type: "FDeltaToC", rangeLow: 2},
+        "overshoot": {type: "FDeltaToC", rangeLow: 1},
+        "waitTime": "minToMs"        
+    }
+    
+    var results = validate.parseDataObject(req.body, formatObj);
+    console.log(results);
+    for (var item in results) {
+        config[item] = results[item];
+    }
+    config.save();
+    
+    var tempData = {
+        minTemp: toFahrenheit(config.minTemp),
+        deltaTemp: toFahrenheitDelta(config.deltaTemp),
+        overshoot: toFahrenheitDelta(config.overshoot),
+        waitTime: config.waitTime / (1000 * 60)
+    }
+    res.render('settings', tempData);
 });
 
-app.get('/debug', function(request, response) {
+app.get('/debug', function(req, res) {
     var tempData = {
         temperatures: data.temperatures,
-        units: request.cookies.temperatureUnits
+        units: req.cookies.temperatureUnits
     };
-    response.render('debug', tempData);
+    res.render('debug', tempData);
 });
 
-app.get('/chart', function(request, response) {
+app.get('/chart', function(req, res) {
     var tempData = {
         // todo - trim the data down
         temperatures: JSON.stringify(data.temperatures),
-        units: request.cookies.temperatureUnits
+        units: req.cookies.temperatureUnits
     };
-    response.render('chart', tempData);
+    res.render('chart', tempData);
 });
 
 // api/
-app.get('/api', function(request, response) {
-    
+app.get('/api', function(req, res, next) {
+    next();
 });
 
 var server = app.listen(8081, function() {
@@ -95,9 +130,20 @@ var server = app.listen(8081, function() {
 
 // convert degrees Celsius to Fahrenheit
 function toFahrenheit(c) {
-    return (c * 9 / 5) + 32;
+    return (+c * 9 / 5) + 32;
 }
 
+function toFahrenheitDelta(c) {
+    return (+c * 9) / 5;
+}
+
+function toCelsius(f) {
+    return (+f - 32) * 5 / 9;
+}
+
+function toCelsiusDelta(f) {
+    return +f * 5 / 9;
+}
 // convert degrees Celsius to Fahrenheit
 // return string form rounded to one decimal
 function toFahrenheitStr(c) {
@@ -162,7 +208,7 @@ var config = {
         outsideCalibration: 0                   // correction to apply to outside temperature
     },
     // temporarily set low for testing
-    minTemp: 10,                                // 32.22C (90F)
+    minTemp: 29.444,                            // 29.444C (85F)
     deltaTemp: 5.6,                             // 10F
     overshoot: 1,                               // ~2F
     waitTime: 10 * 60 * 1000,                   // 10 minutes (min time to wait from turn off before turning on)
@@ -172,11 +218,14 @@ var config = {
     dataSaveTime: 1000 * 60 * 60,               // save data to SD once per hour    
     fanPorts: [16, 18],                         // gpio ports to turn the fans on/off (this is Pi numbering, not Broadcom numbering)
     fanSeparationTime: 60 * 1000,               // time delay between switching each fan
+    fanControl: "auto",                         // "on", "off", "auto"
+    fanControlReturnToAuto: 0,                  // time that fan control should return to auto
+                                                // 0 is never return, otherwise it's a time when control should go back to auto
     
     configFilename: "/home/pi/fan-control.cfg",
     dataFilename: "/home/pi/fan-control-data.txt",
     
-    saveConfig: function() {
+    save: function() {
         try {
             fs.writeFile(this.configFilename, JSON.stringify(this), 'utf8', function(err) {
                 if (err) throw err;
@@ -186,14 +235,15 @@ var config = {
         }
     },
     // this is only done synchronously because it's just done at startup
-    readConfig: function() {
+    load: function() {
         try {
             var data;
             var buffer = fs.readFileSync(this.configFilename, 'utf8');
             if (buffer) {
                 data = JSON.parse(buffer);
                 for (var prop in data) {
-                    if (prop in config) {
+                    // only store properties we know about
+                    if (config.hasOwnProperty(prop)) {
                         config[prop] = data[prop];
                     }
                 }
@@ -215,7 +265,7 @@ var config = {
 };
 
 // read config from SD card upon initialization
-config.readConfig();
+config.load();
 
 // open the GPIO ports
 // Note: the way this code is written, the GPIO ports may not be ready for about 250 ms after this executes
@@ -260,6 +310,26 @@ process.on('exit', function(code) {
 // returns true for fan should be on
 // returns false for fan should be off
 function checkFanAction(atticTemp, outsideTemp) {
+    var curTime = Date.now();
+    // if it isn't on auto
+    if (config.fanControl !== "auto" && config.fanControlReturnToAuto !== 0) {
+        // check if we should return to "auto"
+        if (curTime >= config.fanControlReturnToAuto) {
+            config.fanControl = "auto";
+            config.fanControlReturnToAuto = 0;
+        }
+    }
+    
+    if (config.fanControl === "off") {
+        // make sure fan is off
+        return false;
+    } else if (config.fanControl === "on") {
+        // make sure fan is on
+        return true;
+    }
+    
+    // from here on is the "auto" behavior
+    
     var delta = atticTemp - outsideTemp;
     
     // if attic is simply not hot, then don't turn the attic fan on
@@ -272,7 +342,7 @@ function checkFanAction(atticTemp, outsideTemp) {
         // delta has to be less than config.deltaTemp - config.overshoot to turn it off
         // in other words, the attic has to cool down at least config.overshoot degrees in order
         // to decide to now turn the fan off.  This keeps it from turning on at config.deltaTemp,
-        // cooling down 0.1 degrees and then turning off (hysteresis)
+        // cooling down 0.1 degrees and then turning off (often called hysteresis)
         if (delta <= (config.deltaTemp - config.overshoot)) {
             return false;
         }
@@ -289,15 +359,22 @@ function checkFanAction(atticTemp, outsideTemp) {
 }
 
 // set the fan to the desired setting
-function setFan(fanOn) {
+// pass true to make sure the fan is ON
+// pass false to make sure the fan is OFF
+// The ignoreTime argument says to change the fan now, without regard for the data.lastFanChangetime
+// ignoreTime is normally not passed except for manual override
+
+function setFan(fanOn, ignoreTime) {
     var curTime = Date.now();
     if (fanOn !== data.fanOn) {
         // if we are turning off, we can act right away
         // if we are turning on, we must wait at least config.waitTime from when we turned it off
         // this is to avoid any rapid cycling if temp readings go nuts
-        if (!fanOn || (curTime - data.lastFanChangeTime) >= config.waitTime) {
+        if (!fanOn || ignoreTime || (curTime - data.lastFanChangeTime) >= config.waitTime) {
         
-            // set the fan hardware here
+            // Set the fan hardware here
+            // Note that setting the actual fans is asynchronous (delay between changing them too)
+            // but we can act like it already happened so it shouldn't matter to us
             setFanHardwareOnOff(fanOn, config.fanSeparationTime);
         
             // and record when we changed it
@@ -310,8 +387,6 @@ function setFan(fanOn) {
             console.log("fan turn on holding for waitTime");
         }
     }
-    
-    
 }
 
 function setFanHardwareOnOff(on, delay, sync) {
@@ -428,6 +503,7 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
 
 
 // debug code to turn the LED on and off
+/*
 (function() {
     var lastValue = 0;
     // Pi pins 16 and 18 are the two we're going to use to control the fans
@@ -444,3 +520,4 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
         });        
     }, 3000);
 })();
+*/

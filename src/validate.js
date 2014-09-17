@@ -27,7 +27,7 @@ var convertTypeMap = {
     "FDeltaToC": parseNumber,
     "CDeltaToF": parseNumber,
     "minToMs": parseNumber
-}
+};
 
 function parseNumber(tempStr, args) {
     try {
@@ -87,7 +87,7 @@ function parseDataObject(dataObj, formatObj) {
         fn = convertTypeMap[convertType];
         // if not in convertTypeMap, drop it from the output
         if (fn) {
-            var result = fn(dataStr, args);
+            result = fn(dataStr, args);
             if (result !== null) {
                 output[key] = result;
             }

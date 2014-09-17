@@ -9,6 +9,25 @@
 	.even {background-color: #CCC;}
 	.spacer {clear: both;}
 	
+dl {
+    margin-bottom:50px;
+}
+ 
+dl dt {
+    background:#5f9be3;
+    color:#fff;
+    float:left; 
+    font-weight:bold; 
+    margin-right:10px; 
+    padding:5px;  
+    width:300px; 
+}
+ 
+dl dd {
+    margin:2px 0; 
+    padding:5px 0;
+}	
+	
 </style>
 <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 <script src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
@@ -17,12 +36,27 @@
 	
 	<p>Select the desired temperature units:</p>
 
-	<form>
 	<input checked="checked" id="celsius" name="temperatureUnits" type="radio" value="C" /> 
 	<label for="celsius">Celsius</label><br />
 	<input id="fahrenheit" name="temperatureUnits" type="radio" value="F" /> 
 	<label for="fahrenheit">Fahrenheit</label>
 	</form>
+	
+<form action="/settings" method="post">
+<dl>
+	<dt>Minimum Attic Temperature (&deg;F):</dt><dd><input name="minTemp" value="{{minTemp}}"></dd>
+	<dt>Temperature Difference Trigger (&deg;F):</dt><dd><input name="deltaTemp" value="{{deltaTemp}}"></dd>
+	<dt>Hysteresis Temperature Delta (&deg;F):</dt><dd><input name="overshoot" value="{{overshoot}}"></dd>
+	<dt>Wait Time Before Restart (minutes):</dt><dd><input name="waitTime" value="{{waitTime}}"></dd>
+	<dt></dt><dd></dd>
+	<dt></dt><dd></dd>
+	<dt></dt><dd></dd>
+	<dt></dt><dd></dd>
+	<dt></dt><dd></dd>
+	<dt></dt><dd></dd>
+	<button type="submit">Save</button>
+</dl>	
+</form>
 
 <script>
 (function() {

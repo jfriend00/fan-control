@@ -5,8 +5,9 @@ var express = require('express');
 var hbs = require('hbs');
 var gpio = require('./pi-gpio');
 var cookieParser = require('cookie-parser');
-var bodyParser = require('body-parser')
+var bodyParser = require('body-parser');
 var validate = require('./validate');
+var timeAverager = require('./averager').timeAverager;
 
 var data = require('./fan-data.js');
 
@@ -72,7 +73,7 @@ app.route('/settings').get(function(req, res) {
         deltaTemp: toFahrenheitDelta(config.deltaTemp),
         overshoot: toFahrenheitDelta(config.overshoot),
         waitTime: config.waitTime / (1000 * 60)
-    }
+    };
     res.render('settings', tempData);
 }).post(urlencodedParser, function(req, res, next) {
     console.log(req.body);
@@ -82,7 +83,7 @@ app.route('/settings').get(function(req, res) {
         "deltaTemp": {type: "FDeltaToC", rangeLow: 2},
         "overshoot": {type: "FDeltaToC", rangeLow: 1},
         "waitTime": "minToMs"        
-    }
+    };
     
     var results = validate.parseDataObject(req.body, formatObj);
     console.log(results);
@@ -96,7 +97,7 @@ app.route('/settings').get(function(req, res) {
         deltaTemp: toFahrenheitDelta(config.deltaTemp),
         overshoot: toFahrenheitDelta(config.overshoot),
         waitTime: config.waitTime / (1000 * 60)
-    }
+    };
     res.render('settings', tempData);
 });
 
@@ -118,8 +119,15 @@ app.get('/chart', function(req, res) {
 });
 
 // api/
-app.get('/api', function(req, res, next) {
-    next();
+// TODO: make sure proper caching headers are being set here to avoid browser caching on API calls
+app.get('/api/status', function(req, res, next) {
+    var lastTemps = data.getTemperatureItem(-1);
+    var tempData = {
+        atticTemp: lastTemps.atticTemp,
+        outsideTemp: lastTemps.outsideTemp,
+        fan: data.fanOn ? "on" : "off"
+    };
+    res.json(tempData);
 });
 
 var server = app.listen(8081, function() {
@@ -221,6 +229,7 @@ var config = {
     fanControl: "auto",                         // "on", "off", "auto"
     fanControlReturnToAuto: 0,                  // time that fan control should return to auto
                                                 // 0 is never return, otherwise it's a time when control should go back to auto
+    outsideAveragingTime: 3 * 60 * 1000,        // 3 minutes - time (ms) to average the outside temperature over
     
     configFilename: "/home/pi/fan-control.cfg",
     dataFilename: "/home/pi/fan-control-data.txt",
@@ -406,7 +415,7 @@ function setFanHardwareOnOff(on, delay, sync) {
                 } else {
                     ++cntr;
                     if (delay) {
-                        setTimeout(next, delay);
+                        setTimeout(nextAsync, delay);
                     } else {
                         nextAsync();
                     }
@@ -433,6 +442,10 @@ function setFanHardwareOnOff(on, delay, sync) {
 }
 
 
+var outsideAverager = new timeAverager(config.outsideAveragingTime, 2);
+// we could fill up the averager from recent stored data points except the averager is supposed to have raw data
+// and stored data is averaged data
+
 function poll() {
     Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).then(function(temps) {
         var recordTemp = true,
@@ -440,6 +453,10 @@ function poll() {
             atticTemp = Math.round((temps[0] + config.thermometerInfo.atticCalibration) * 100) / 100, 
             outsideTemp = Math.round((temps[1] + config.thermometerInfo.outsideCalibration) * 100) / 100;
         
+        var outsideAverage = outsideAverager.add(outsideTemp);
+        if (outsideAverage !== null) {
+            outsideTemp = Math.round(outsideAverage * 100) / 100;
+        }
 
         var lastTemps = data.getTemperatureItem(-1);
         if (lastTemps) {

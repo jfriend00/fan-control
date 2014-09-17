@@ -118,10 +118,8 @@ var data = {
             }
         } else {
             // asynchronous saving
-            console.log("setting dataBlock");
             self.dataBlock = true;
             var start = Date.now();
-            console.log("    async write started");
             fs.openAsync(tempFilename, "w", filePermissions).then(function(ffd) {
                 fd = ffd;
                 // write temperature data header
@@ -200,8 +198,6 @@ var data = {
                     console.log("Error cleaning up on .catch() from writeData");
                 });
             }).finally(function() {
-                console.log("    async write finished - elapsed = " + ((Date.now() - start) / 1000));
-                console.log("clearing dataBlock");
                 self.dataBlock = false;
                 
                 // process any events that were blocked while we were writing the data

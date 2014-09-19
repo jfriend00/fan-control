@@ -8,6 +8,8 @@ var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var validate = require('./validate');
 var timeAverager = require('./averager').timeAverager;
+var session = require('express-session');
+var flash = require('connect-flash');
 
 var data = require('./fan-data.js');
 
@@ -21,6 +23,8 @@ app.use('/img', express.static(__dirname + '/img'));
 // operative site-wide cookies:
 // temperatureUnits: "C" | "F"
 app.use(cookieParser());
+app.use(session({secret: 'fanControl', saveUninitialized: true, resave: true}));
+app.use(flash());
 app.use(function(req, res, next) {
     // fill in default values for common cookies so we don't have to do it elsewhere in the code
     req.cookies.temperatureUnits = req.cookies.temperatureUnits || "C";
@@ -50,6 +54,31 @@ hbs.registerHelper("formatTemp", function(temp, units) {
     return temp;
 });
 
+// a bunch of conditionals in templates
+hbs.registerHelper('ifCond', function (v1, operator, v2, options) {
+
+    switch (operator) {
+        case '==':
+            return (v1 == v2) ? options.fn(this) : options.inverse(this);
+        case '===':
+            return (v1 === v2) ? options.fn(this) : options.inverse(this);
+        case '<':
+            return (v1 < v2) ? options.fn(this) : options.inverse(this);
+        case '<=':
+            return (v1 <= v2) ? options.fn(this) : options.inverse(this);
+        case '>':
+            return (v1 > v2) ? options.fn(this) : options.inverse(this);
+        case '>=':
+            return (v1 >= v2) ? options.fn(this) : options.inverse(this);
+        case '&&':
+            return (v1 && v2) ? options.fn(this) : options.inverse(this);
+        case '||':
+            return (v1 || v2) ? options.fn(this) : options.inverse(this);
+        default:
+            return options.inverse(this);
+    }
+});
+
 // define page routes
 app.get('/', function(req, res) {
     var item = data.getTemperatureItem(-1);
@@ -67,40 +96,97 @@ app.get('/index', function(req, res) {
     res.render('index', {test: "Hello World"});
 });
 
-app.route('/settings').get(function(req, res) {
+// add data to a data structure (usually a handlebars data structure)
+// from the hbsExtra flash key
+function getHbsItems(req, data) {
+    var extra = req.flash('hbsExtra'), obj, key;
+    if (extra) {
+        for (var i = 0; i < extra.length; i++) {
+            obj = extra[i];
+            for (key in obj) {
+                data[key] = obj[key];
+            }
+        }
+    }
+}
+
+// item is an object with key value pairs that will be added to the handlebars data structure
+function addHbsItem(req, item) {
+    req.flash('hbsExtra', item);
+}
+
+function renderSettings(req, res, next) {
     var tempData = {
         minTemp: toFahrenheit(config.minTemp),
         deltaTemp: toFahrenheitDelta(config.deltaTemp),
         overshoot: toFahrenheitDelta(config.overshoot),
-        waitTime: config.waitTime / (1000 * 60)
+        waitTime: config.waitTime / (1000 * 60),
+        outsideAveragingTime: config.outsideAveragingTime / (1000 * 60),
+        fanControlReturnToAutoDefault: 30,
+        fanState: data.fanOn,
+        fanControl: config.fanControl
     };
     res.render('settings', tempData);
-}).post(urlencodedParser, function(req, res, next) {
-    console.log(req.body);
-    
+}
+
+app.route('/settings')
+  .get(renderSettings)
+  .post(urlencodedParser, function(req, res, next) {
+    // post can be either a form post or an ajax call, but it returns JSON either way
     var formatObj = {
         "minTemp": "FtoC",
         "deltaTemp": {type: "FDeltaToC", rangeLow: 2},
         "overshoot": {type: "FDeltaToC", rangeLow: 1},
-        "waitTime": "minToMs"        
+        "waitTime": "minToMs",
+        "outsideAveragingTime": "minToMs"
     };
     
+    // validate settings and only save items that pass validation
     var results = validate.parseDataObject(req.body, formatObj);
-    console.log(results);
     for (var item in results) {
         config[item] = results[item];
     }
-    config.save();
-    
-    var tempData = {
-        minTemp: toFahrenheit(config.minTemp),
-        deltaTemp: toFahrenheitDelta(config.deltaTemp),
-        overshoot: toFahrenheitDelta(config.overshoot),
-        waitTime: config.waitTime / (1000 * 60)
-    };
-    res.render('settings', tempData);
+    config.save().then(function() {
+        res.json({status: "ok"});    
+    }).catch(function(e) {
+        res.json({status: "Config file write failed on server"});    
+    });
 });
 
+app.post('/onoff', urlencodedParser, function(req, res) {
+    var formatObj = {
+        // value must be more than 5 minutes, less than 12 hours
+        "fanControlReturnToAuto": {type: "minToMs", preRangeLow: 1, preRangeHigh: 12 * 60}
+    };
+    
+    var results = validate.parseDataObject(req.body, formatObj);
+    if (results.fanControlReturnToAuto) {
+        // calc the actual time in the future to return to auto
+        var t = Date.now() + results.fanControlReturnToAuto;
+        var action = req.body.action;
+        var status = "ok";
+        
+        // see which button was sent with the form (e.g. which one was pressed
+        if (action === "off") {
+            config.fanControlReturnToAuto = t;
+            config.fanControl = "off";
+            setFan(false, true);
+        } else if (action === "on") {
+            config.fanControlReturnToAuto = t;
+            config.fanControl = "on";
+            setFan(true, true);
+        } else if (action === "auto") {
+            config.fanControl = "auto";
+            // don't explicitly call setFan() here at all
+            // the next temperature point sample will call setFan() for us based on current temperature conditions
+        } else {
+            status = 'Unknown action: must be "on", "off" or "auto"';
+        }
+        config.save();
+        res.json({status: status});
+    }
+});
+    
 app.get('/debug', function(req, res) {
     var tempData = {
         temperatures: data.temperatures,
@@ -222,26 +308,23 @@ var config = {
     waitTime: 10 * 60 * 1000,                   // 10 minutes (min time to wait from turn off before turning on)
     fanEventRetentionDays: (365 * 3) + 1,       // retain N days of fan on/off data
     temperatureRetentionDays: 7,                // retain N days of temperature data (starting from next midnight transition)
-    temperatureRetentionMaxItems: 5000,         // max temp points to retain (to prevent runaway memory usage)
+    temperatureRetentionMaxItems: 10000,        // max temp points to retain (to prevent runaway memory usage)
     dataSaveTime: 1000 * 60 * 60,               // save data to SD once per hour    
-    fanPorts: [16, 18],                         // gpio ports to turn the fans on/off (this is Pi numbering, not Broadcom numbering)
-    fanSeparationTime: 60 * 1000,               // time delay between switching each fan
+    fanPorts: [18, 16],                         // gpio ports to turn the fans on/off (this is Pi pin numbering, not Broadcom numbering)
+    fanSeparationTime: 20 * 1000,               // time delay between switching each fan
     fanControl: "auto",                         // "on", "off", "auto"
     fanControlReturnToAuto: 0,                  // time that fan control should return to auto
                                                 // 0 is never return, otherwise it's a time when control should go back to auto
-    outsideAveragingTime: 3 * 60 * 1000,        // 3 minutes - time (ms) to average the outside temperature over
+    outsideAveragingTime: 3 * 60 * 1000,        // 3 minutes - time (ms) to average the temperatures over
     
     configFilename: "/home/pi/fan-control.cfg",
     dataFilename: "/home/pi/fan-control-data.txt",
-    
+
+    // returns a promise
     save: function() {
-        try {
-            fs.writeFile(this.configFilename, JSON.stringify(this), 'utf8', function(err) {
-                if (err) throw err;
-            });
-        } catch(e) {
+        return fs.writeFileAsync(this.configFilename, JSON.stringify(this), 'utf8').catch(function(e) {
             console.log("Error saving config file");
-        }
+        });
     },
     // this is only done synchronously because it's just done at startup
     load: function() {
@@ -276,7 +359,7 @@ var config = {
 // read config from SD card upon initialization
 config.load();
 
-// open the GPIO ports
+// open the GPIO ports and then read their value
 // Note: the way this code is written, the GPIO ports may not be ready for about 250 ms after this executes
 // Any code that attempts to use them must wait at least that long
 (function() {
@@ -285,6 +368,17 @@ config.load();
             if (err) {
                 console.log("error opening gpio port " + port + " at startup");
             }
+            gpio.read(port, function(err, value) {
+                if (err) {
+                    console.log("error reading gpio port " + port + " at startup");
+                } else {
+                    console.log("read GPIO port " + port + " with value: " + value);
+                    // at least one fan is on so indicate that in our data
+                    if (value) {
+                        data.fanOn = true;
+                    }
+                }
+            });
         });
     });
 })();
@@ -442,9 +536,8 @@ function setFanHardwareOnOff(on, delay, sync) {
 }
 
 
-var outsideAverager = new timeAverager(config.outsideAveragingTime, 2);
-// we could fill up the averager from recent stored data points except the averager is supposed to have raw data
-// and stored data is averaged data
+var outsideAverager = new timeAverager(config.outsideAveragingTime);
+var atticAverager = new timeAverager(config.outsideAveragingTime);
 
 function poll() {
     Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).then(function(temps) {
@@ -452,10 +545,16 @@ function poll() {
             // round to one decimal and add in calibration factor
             atticTemp = Math.round((temps[0] + config.thermometerInfo.atticCalibration) * 100) / 100, 
             outsideTemp = Math.round((temps[1] + config.thermometerInfo.outsideCalibration) * 100) / 100;
-        
+
+        // put both our data points into averagers to smooth out any data glitches
         var outsideAverage = outsideAverager.add(outsideTemp);
         if (outsideAverage !== null) {
             outsideTemp = Math.round(outsideAverage * 100) / 100;
+        }
+        
+        var atticAverage = atticAverager.add(atticTemp);
+        if (atticAverage !== null) {
+            atticTemp = Math.round(atticAverage * 100) / 100;
         }
 
         var lastTemps = data.getTemperatureItem(-1);

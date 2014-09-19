@@ -7,6 +7,20 @@ function timeAverager(deltaT) {
 timeAverager.prototype = {
     add: function(value) {
         this.data.push({t: Date.now(), value: value});
+        
+        // FIXME: remove this debugging code
+        // this logs if the difference between any two temperature points is more than 0.5 degrees
+        // we're trying to see if the outside temperature is noisy
+        function toFahrenheit(c) {
+            return (+c * 9 / 5) + 32;
+        }
+        
+        if (this.data.length > 1) {
+            if (Math.abs(value - this.data[this.data.length - 2].value) > 0.25) {
+                console.log("temperature jump from " + toFahrenheit(this.data[this.data.length - 2].value) + " to " + toFahrenheit(value));
+            }
+        }
+        
         this.ageData();
         return this.getAverage();
     },
@@ -36,8 +50,6 @@ timeAverager.prototype = {
     ageData: function() {
         var now = Date.now();
         var data = this.data;
-        
-        if (!data.length) return;
         
         // pull off the first item in the array as long as it's too old
         while (data.length && now - data[0].t > this.deltaT) {

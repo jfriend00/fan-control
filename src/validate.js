@@ -40,6 +40,19 @@ function parseNumber(tempStr, args) {
         if (isNaN(temp)) {
             return null;
         }
+        
+        // now do any range checking
+        if ("preRangeLow" in args) {
+            if (temp < args.preRangeLow) {
+                return null;
+            }
+        }
+        if ("preRangeHigh" in args) {
+            if (temp > args.preRangeHigh) {
+                return null;
+            }
+        }
+        
         if (convert === "FtoC") {
             temp = toCelsius(temp);
         } else if (convert === "CtoF") {

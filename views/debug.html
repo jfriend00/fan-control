@@ -12,6 +12,8 @@
 </style>
 </head>
 <body>
+	{{> header}}
+
 	<div style="height: 50px;">Number of temperatures recorded: {{temperatures.length}}</div>
 	<div class="row"> <div class="time">Time</div><div class="atticTemp">Attic Temperature</div><div class="outsideTemp">Outside Temperature</div></div>
 	{{#each temperatures}}

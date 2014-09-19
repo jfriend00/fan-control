@@ -339,8 +339,8 @@ var data = {
             }
 
             // truncate arrays to max number of days of data
-            truncateToNumberOfDays(temps, this.config.temperatureRetentionDays);
-            truncateToNumberOfDays(this.fanOnOffEvents, this.config.fanEventRetentionDays);
+            // truncateToNumberOfDays(temps, this.config.temperatureRetentionDays);
+            // truncateToNumberOfDays(this.fanOnOffEvents, this.config.fanEventRetentionDays);
         }
         
         if (this.dataBlock) {

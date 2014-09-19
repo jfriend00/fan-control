@@ -10,14 +10,18 @@ var validate = require('./validate');
 var timeAverager = require('./averager').timeAverager;
 var session = require('express-session');
 var flash = require('connect-flash');
-
+ 
 var data = require('./fan-data.js');
 
 var app = express();
 
+
 // static routes that get no further processing
 app.use('/lib', express.static(__dirname + '/lib'));
 app.use('/img', express.static(__dirname + '/img'));
+
+// say where partials are
+hbs.registerPartials(__dirname + '/views/partials');
 
 // put middleware into place
 // operative site-wide cookies:
@@ -115,7 +119,8 @@ function addHbsItem(req, item) {
     req.flash('hbsExtra', item);
 }
 
-function renderSettings(req, res, next) {
+app.route('/settings')
+  .get(function(req, res, next) {
     var tempData = {
         minTemp: toFahrenheit(config.minTemp),
         deltaTemp: toFahrenheitDelta(config.deltaTemp),
@@ -127,11 +132,7 @@ function renderSettings(req, res, next) {
         fanControl: config.fanControl
     };
     res.render('settings', tempData);
-}
-
-app.route('/settings')
-  .get(renderSettings)
-  .post(urlencodedParser, function(req, res, next) {
+  }).post(urlencodedParser, function(req, res, next) {
     // post can be either a form post or an ajax call, but it returns JSON either way
     var formatObj = {
         "minTemp": "FtoC",
@@ -145,6 +146,11 @@ app.route('/settings')
     var results = validate.parseDataObject(req.body, formatObj);
     for (var item in results) {
         config[item] = results[item];
+    }
+    // update our real-time averagers
+    if (results.outsideAveragingTime) {
+        outsideAverager.setDeltaT(results.outsideAveragingTime);
+        atticAverager.setDeltaT(results.outsideAveragingTime);
     }
     config.save().then(function() {
         res.json({status: "ok"});    
@@ -160,10 +166,10 @@ app.post('/onoff', urlencodedParser, function(req, res) {
     };
     
     var results = validate.parseDataObject(req.body, formatObj);
-    if (results.fanControlReturnToAuto) {
+    var action = req.body.action;
+    if (results.fanControlReturnToAuto || action === "auto") {
         // calc the actual time in the future to return to auto
         var t = Date.now() + results.fanControlReturnToAuto;
-        var action = req.body.action;
         var status = "ok";
         
         // see which button was sent with the form (e.g. which one was pressed
@@ -219,6 +225,36 @@ app.get('/api/status', function(req, res, next) {
 var server = app.listen(8081, function() {
     console.log(new Date().toString() + ": fan-control server started on port 8081");
 });
+
+// web sockets handler
+var io = require('socket.io').listen(server);
+
+// this line of code gets a list of all currently connected websockets that we can broadcast to
+// this is an object with a key of the id and value of the socket object
+// "/" is the default namespace
+// var clients = io.of("/").connected;
+
+
+var activeSockets = {};
+io.sockets.on('connection', function (socket) {
+    console.log(socket.id + ": socket connect");
+    // add socket to our active sockets list
+    activeSockets[socket.id] = socket;
+    
+    // register for disconnect
+    // so we can remove it from our list
+    socket.on('disconnect', function(socket) {
+        console.log(socket.id + ": socket disconnect");
+        var index = activeSockets.indexOf(socket);
+        if (index !== -1) {
+            activeSockets.splice(index, 1);
+        }
+    });
+    socket.on("info", function() {
+        socket.emit("hello");
+    });
+});
+
 
 
 
@@ -540,30 +576,22 @@ var outsideAverager = new timeAverager(config.outsideAveragingTime);
 var atticAverager = new timeAverager(config.outsideAveragingTime);
 
 function poll() {
-    Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).then(function(temps) {
-        var recordTemp = true,
-            // round to one decimal and add in calibration factor
-            atticTemp = Math.round((temps[0] + config.thermometerInfo.atticCalibration) * 100) / 100, 
-            outsideTemp = Math.round((temps[1] + config.thermometerInfo.outsideCalibration) * 100) / 100;
+    Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).spread(function(atticTemp, outsideTemp) {
+        var minDiff = 0.06, recordTemp = true;
+        
+        // add in calibration factor
+        atticTemp += config.thermometerInfo.atticCalibration;
+        outsideTemp += config.thermometerInfo.outsideCalibration;
 
         // put both our data points into averagers to smooth out any data glitches
-        var outsideAverage = outsideAverager.add(outsideTemp);
-        if (outsideAverage !== null) {
-            outsideTemp = Math.round(outsideAverage * 100) / 100;
-        }
-        
-        var atticAverage = atticAverager.add(atticTemp);
-        if (atticAverage !== null) {
-            atticTemp = Math.round(atticAverage * 100) / 100;
-        }
+        // then round to two decimal points (which is likely more precision than there really is)
+        outsideTemp = Math.round(outsideAverager.add(outsideTemp) * 100) / 100;
+        atticTemp = Math.round(atticAverager.add(atticTemp) * 100) / 100;
 
         var lastTemps = data.getTemperatureItem(-1);
         if (lastTemps) {
-            // if neither temp has changed since we last saved a temp, then don't record it
-            // temps are rounded to 0.1 degree C so it has to change a meaningful amount to get recorded
-            if (lastTemps.atticTemp === atticTemp && lastTemps.outsideTemp === outsideTemp) {
-                recordTemp = false;
-            }
+            // if neither temp has changed enough since we last saved a temp, then don't record it
+            recordTemp = Math.abs(lastTemps.atticTemp - atticTemp) >= minDiff || Math.abs(lastTemps.outsideTemp - outsideTemp) >= minDiff;
         }
         if (recordTemp) {
             data.addTemperature(atticTemp, outsideTemp);
@@ -574,7 +602,6 @@ function poll() {
         
         // age any data that needs to be thrown away
         data.ageData();
-        
         /*
         console.log(new Date().toString().replace(/\s*GMT.*$/, "") + ": attic temp = " + atticTemp + 
             ", outside temp = " + outsideTemp + ", len=" + data.getTemperatureLength() + 

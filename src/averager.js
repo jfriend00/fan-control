@@ -56,6 +56,10 @@ timeAverager.prototype = {
             data.shift();
         }
         
+    },
+    
+    setDeltaT: function(deltaT) {
+        this.deltaT = deltaT;
     }
 };
 

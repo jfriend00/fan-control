@@ -9,24 +9,17 @@
 	.even {background-color: #CCC;}
 	.spacer {clear: both;}
 	
-dl {
-    margin-bottom:50px;
-}
- 
-dl dt {
-    background:#5f9be3;
-    color:#fff;
-    float:left; 
-    font-weight:bold; 
-    margin-right:10px; 
-    padding:5px;  
-    width:300px; 
-}
- 
-dl dd {
-    margin:2px 0; 
-    padding:5px 0;
-}	
+	.formContainer {display: table; margin: 0 auto 20px;}
+	.columnForm p {display: table-row;}
+	.columnForm label {display: table-cell; text-align: right; padding-right: 10px;}
+	.columnForm input {display: table-cell;}
+	.formContainer input {width: 8em; margin-top: 1em;}
+	.buttonRow {text-align: center; display: table-row;}
+	.buttonRow button {margin-bottom: 15px;}
+	.tempMsg, .permMsg {color: red;}
+	.caption {display: table-row; font-size: 160%; font-weight: bold; text-align: center;}
+	.title {font-size: 160%; font-weight: bold; margin: 0 auto; text-align: center; margin-bottom: .5em;}
+	.subTitle {font-size: 120%; margin: 0 auto; text-align: center; margin-bottom: 1em;}
 	
 </style>
 <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
@@ -42,23 +35,56 @@ dl dd {
 	<label for="fahrenheit">Fahrenheit</label>
 	</form>
 	
-<form action="/settings" method="post">
-<dl>
-	<dt>Minimum Attic Temperature (&deg;F):</dt><dd><input name="minTemp" value="{{minTemp}}"></dd>
-	<dt>Temperature Difference Trigger (&deg;F):</dt><dd><input name="deltaTemp" value="{{deltaTemp}}"></dd>
-	<dt>Hysteresis Temperature Delta (&deg;F):</dt><dd><input name="overshoot" value="{{overshoot}}"></dd>
-	<dt>Wait Time Before Restart (minutes):</dt><dd><input name="waitTime" value="{{waitTime}}"></dd>
-	<dt></dt><dd></dd>
-	<dt></dt><dd></dd>
-	<dt></dt><dd></dd>
-	<dt></dt><dd></dd>
-	<dt></dt><dd></dd>
-	<dt></dt><dd></dd>
-	<button type="submit">Save</button>
+<div class="title">Control Settings</div>
+<form class="columnForm" id="settings" action="/settings" method="post">
+	<div class="formContainer">
+		<p><label>Minimum Attic Temperature (&deg;F):</label><input name="minTemp" value="{{minTemp}}"></p>
+		<p><label>Temperature Difference Trigger (&deg;F):</label><input name="deltaTemp" value="{{deltaTemp}}"></p>
+		<p><label>Hysteresis Temperature Delta (&deg;F):</label><input name="overshoot" value="{{overshoot}}"></p>
+		<p><label>Wait Time Before Restart (mins):</label><input name="waitTime" value="{{waitTime}}"></p>
+		<p><label>Averaging Time Temperature Readings (mins):</label><input name="outsideAveragingTime" value="{{outsideAveragingTime}}"></p>
+	</div>
+	<div class="formContainer">
+		<p class="buttonRow">
+			<button type="submit">Save</button>
+		</p>
+	</div>
+	<div class="formContainer" style="display: none;" id="settingsMsg">
+		<div class="tempMsg"></div>
+	</div>
+		
+	</div>
 </dl>	
+</form>
+<hr>
+<form id="on-off">
+	<div class="title">Fan Control</div>
+	<div class="subTitle">Control is currently set to: <span id="fanControlType">{{fanControl}}</span></div>
+	<div class="formContainer">
+		<p class="buttonRow">
+			{{#if fanState}}
+			<button id="turnFanOff" name="action" value="off">Turn Fan Off</button>
+			<button id="turnFanOn" name="action" value="on" style="display: none;">Turn Fan On</button>
+			{{else}}
+			<button id="turnFanOff" name="action" value="off" style="display: none;">Turn Fan Off</button>
+			<button id="turnFanOn" name="action" value="on">Turn Fan On</button>
+			{{/if}}
+			<label> And Resume Auto After (mins): </label>
+				<input name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}">
+		</p>
+		<p class="buttonRow">
+			<button id="turnFanAuto" name="action" value="auto" 
+				{{#ifCond fanControl "==" "auto"}} style="display: none;" {{/ifCond}}>
+				Set Fan to Auto</button>
+		</p>
+	</div>
+	<div class="formContainer" style="display: none;" id="onOffMsg">
+		<div class="tempMsg"></div>
+	</div>
 </form>
 
 <script>
+// page initialization code
 (function() {
 	var temperatureUnits = $.cookie("temperatureUnits") || "C";
 	if (temperatureUnits !== "C") {
@@ -67,6 +93,55 @@ dl dd {
 	$("input[name='temperatureUnits']").change(function() {
 		$.cookie("temperatureUnits", this.value, { expires: 365 * 10, path: '/' });
 	}).filter("[value='" + temperatureUnits + "']").prop("checked", true);
+	
+	function showTempMsg(id, msg, t) {
+		t = t || 10;
+		$("#" + id).show().find(".tempMsg").html(msg).end().delay(t * 1000).fadeOut(2000);
+	}
+	
+	// hook up event handlers for the forms
+	$("#settings").submit(function(e) {
+		e.preventDefault();
+		$.post("/settings", $(this).serialize()).done(function(result) {
+			// show settings saved message here
+			if (result.status === "ok") {
+				showTempMsg("settingsMsg", "Settings Saved Successfully");
+			} else {
+				showTempMsg("settingsMsg", result.status);
+			}
+		});
+	});
+	// on/off/auto form
+	$("#on-off").submit(function(e) {
+		// prevent normal form submission
+		// require direct button click
+		e.preventDefault();
+	}).find("button").click(function(e) {
+		e.preventDefault();
+		// get form data plus the action
+		var button = $(this);
+		var action = button.attr("value");
+		var data = button.closest("form").serialize() + "&action=" + action;
+		$.post("/onoff", data).done(function(result) {
+			if (result.status === "ok") {
+				showTempMsg("onOffMsg", "Fan set to " + action);
+				$("#fanControlType").text(action);
+				if (action === "auto") {
+					$("#turnFanAuto").hide();
+					// FIXME: we don't know whether to show the on or off buttons here
+				} else if (action === "off") {
+					$("#turnFanOff").hide();
+					$("#turnFanOn").show();
+				} else if (action === "on") {
+					$("#turnFanOn").hide();
+					$("#turnFanOff").show();
+				}
+				
+			} else {
+				showTempMsg("onOffMsg", result.status);
+			}
+		});
+	});
 })();
 </script>
 </body>

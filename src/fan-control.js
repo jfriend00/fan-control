@@ -204,7 +204,9 @@ function makeTemperatureDataForClient() {
     
 app.get('/debug', function(req, res) {
     var tempData = {
-        temperatures: data.temperatures,
+        // last hour's worth of data
+        temperatures: data.temperatures.slice(-6 * 60),
+        totalTemps: data.temperatures.length,
         units: req.cookies.temperatureUnits
     };
     res.render('debug', tempData);

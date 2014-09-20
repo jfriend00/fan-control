@@ -10,7 +10,6 @@
 			$("#outsideTemp").text(data.outsideTemp.toFixed(1));
 		}
 		$(document).ready(updatePage);
-		console.log("got temperatureUpdateMsg:", data);
 	});
 	socket.on("fanUpdateMsg", function(data) {
 		$(document).ready(function() {
@@ -25,16 +24,23 @@
 		// join the raw room and listen for the raw event
 		
 		function join() {
+			// make sure we don't get double notifications in case of a reconnect
+			socket.off("temperatureUpdateRawMsg");
 			socket.on("temperatureUpdateRawMsg", callback);
 			socket.emit("joinRoom", "raw");
 		}
 		
 		// if already connected, we can join now
 		if (socket.connected) {
+			console.log("already connected, sending join request");
 			join();
 		} else {
 			// otherwise, wait till connected, then join
-			socket.on('connect', join);
+			console.log("register for connect event before join request");
+			socket.on('connect', function() {
+				console.log("received connect event: " + new Date());
+				join();
+			});
 		}
 	};
 	window.disableRawUpdates = function(callback) {

@@ -137,7 +137,7 @@ app.route('/settings')
     var formatObj = {
         "minTemp": "FtoC",
         "deltaTemp": {type: "FDeltaToC", rangeLow: 2},
-        "overshoot": {type: "FDeltaToC", rangeLow: 1},
+        "overshoot": {type: "FDeltaToC", rangeLow: 0.555555554},
         "waitTime": "minToMs",
         "outsideAveragingTime": "minToMs"
     };
@@ -192,6 +192,15 @@ app.post('/onoff', urlencodedParser, function(req, res) {
         res.json({status: status});
     }
 });
+
+function makeTemperatureDataForClient() {
+    // build client-side data structure
+    var temps = [];
+    data.eachTemperature(function(item) {
+        temps.push([item.t, item.atticTemp, item.outsideTemp]);
+    });
+    return temps;
+}
     
 app.get('/debug', function(req, res) {
     var tempData = {
@@ -204,7 +213,7 @@ app.get('/debug', function(req, res) {
 app.get('/chart', function(req, res) {
     var tempData = {
         // todo - trim the data down
-        temperatures: JSON.stringify(data.temperatures),
+        temperatures: JSON.stringify(makeTemperatureDataForClient()),
         units: req.cookies.temperatureUnits
     };
     res.render('chart', tempData);
@@ -228,40 +237,64 @@ var server = app.listen(8081, function() {
 
 // web sockets handler
 var io = require('socket.io').listen(server);
+var socketListeners = {
+    broadcastTemperatureUpdate: function(atticTemp, outsideTemp) {
+        var data = {
+            atticTemp: toFahrenheitRound(atticTemp),
+            outsideTemp: toFahrenheitRound(outsideTemp)
+        };
+        this.updates.emit("temperatureUpdateMsg", data);
+    },
+    broadcastTemperatureUpdateRaw: function(atticTempRaw, outsideTempRaw, atticTemp, outsideTemp) {
+        // we broadcast all raw (unaveraged temperatures to the 'raw' room in the /updates namespace)
+        var data = {
+            t: Date.now(),
+            atticTemp: toFahrenheitRound(atticTemp),
+            outsideTemp: toFahrenheitRound(outsideTemp),
+            atticTempAvg: toFahrenheit(atticTemp),
+            outsideTempAvg: toFahrenheit(outsideTemp),
+            atticTempRaw: toFahrenheit(atticTempRaw),
+            outsideTempRaw: toFahrenheit(outsideTempRaw)
+        };
+        this.updates.to('raw').emit("temperatureUpdateRawMsg", data);
+    },
+    broadcastFanUpdate: function(data) {
+        this.updates.emit("fanUpdateMsg", data ? "On" : "Off");
+    }
+};
 
-// this line of code gets a list of all currently connected websockets that we can broadcast to
-// this is an object with a key of the id and value of the socket object
-// "/" is the default namespace
-// var clients = io.of("/").connected;
-
-
-var activeSockets = {};
-io.sockets.on('connection', function (socket) {
-    console.log(socket.id + ": socket connect");
-    // add socket to our active sockets list
-    activeSockets[socket.id] = socket;
+socketListeners.updates = io.of('/updates').on('connection', function(socket) {
+    // upon connection, send our last temperature reading
+    var lastTemps = data.getTemperatureItem(-1);    
+    if (lastTemps) {
+        socket.emit("temperatureUpdateMsg", {atticTemp: toFahrenheitRound(lastTemps.atticTemp), outsideTemp: toFahrenheitRound(lastTemps.outsideTemp)});
+    }
+    // send initial state of the fan
+    socket.emit("fanUpdateMsg", data.fanOn ? "On" : "Off");
     
-    // register for disconnect
-    // so we can remove it from our list
-    socket.on('disconnect', function(socket) {
-        console.log(socket.id + ": socket disconnect");
-        var index = activeSockets.indexOf(socket);
-        if (index !== -1) {
-            activeSockets.splice(index, 1);
+    // listen to events coming from the client
+    socket.on("joinRoom", function(room) {
+        if (room === "raw") {
+            socket.join("raw");
         }
     });
-    socket.on("info", function() {
-        socket.emit("hello");
+    socket.on("leaveRoom", function(room) {
+        if (room === "raw") {
+            socket.leave("raw");
+        }
     });
 });
-
-
 
 
 // convert degrees Celsius to Fahrenheit
 function toFahrenheit(c) {
     return (+c * 9 / 5) + 32;
 }
+
+function toFahrenheitRound(c) {
+    return Math.round(((c * 9 / 5) + 32) * 100) / 100;
+}
+
 
 function toFahrenheitDelta(c) {
     return (+c * 9) / 5;
@@ -279,6 +312,7 @@ function toCelsiusDelta(f) {
 function toFahrenheitStr(c) {
     return toFahrenheit(c).toFixed(2);
 }
+
 
 
 // returns a promise that eventually returns the temp
@@ -339,8 +373,8 @@ var config = {
     },
     // temporarily set low for testing
     minTemp: 29.444,                            // 29.444C (85F)
-    deltaTemp: 5.6,                             // 10F
-    overshoot: 1,                               // ~2F
+    deltaTemp: 3.33333333333333,                // 6F
+    overshoot: 0.55555555555555,                // ~1F
     waitTime: 10 * 60 * 1000,                   // 10 minutes (min time to wait from turn off before turning on)
     fanEventRetentionDays: (365 * 3) + 1,       // retain N days of fan on/off data
     temperatureRetentionDays: 7,                // retain N days of temperature data (starting from next midnight transition)
@@ -471,12 +505,14 @@ function checkFanAction(atticTemp, outsideTemp) {
     
     var delta = atticTemp - outsideTemp;
     
-    // if attic is simply not hot, then don't turn the attic fan on
-    if (atticTemp <= config.minTemp) {
-        return false;
-    }
-    
     if (data.fanOn) {
+        // when fan is on, it's allowed to run down to config.minTemp - config.overshoot
+        // this is to keep it from turning back on right away if there's a 
+        // little temperature rebound when the fan is turned off
+        if (atticTemp <= (config.minTemp - config.overshoot)) {
+            return false;
+        }
+        
         // if fan already on, see if we should turn it off
         // delta has to be less than config.deltaTemp - config.overshoot to turn it off
         // in other words, the attic has to cool down at least config.overshoot degrees in order
@@ -487,6 +523,11 @@ function checkFanAction(atticTemp, outsideTemp) {
         }
         
     } else {
+        // when fan is off, never turn it on if it's below config.minTemp
+        if (atticTemp <= config.minTemp) {
+            return false;
+        }
+    
         // fan is off, see if we should turn it on
         // delta has to be more than config.deltaTemp to turn it on
         if (delta >= config.deltaTemp) {
@@ -515,7 +556,7 @@ function setFan(fanOn, ignoreTime) {
             // Note that setting the actual fans is asynchronous (delay between changing them too)
             // but we can act like it already happened so it shouldn't matter to us
             setFanHardwareOnOff(fanOn, config.fanSeparationTime);
-        
+            socketListeners.broadcastFanUpdate(fanOn);
             // and record when we changed it
             data.fanOn = fanOn;
             data.lastFanChangeTime = curTime;
@@ -576,17 +617,20 @@ var outsideAverager = new timeAverager(config.outsideAveragingTime);
 var atticAverager = new timeAverager(config.outsideAveragingTime);
 
 function poll() {
-    Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).spread(function(atticTemp, outsideTemp) {
-        var minDiff = 0.06, recordTemp = true;
+    Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).spread(function(atticTempRaw, outsideTempRaw) {
+        var minDiff = 0.06, recordTemp = true, atticTemp, outsideTemp;
         
         // add in calibration factor
-        atticTemp += config.thermometerInfo.atticCalibration;
-        outsideTemp += config.thermometerInfo.outsideCalibration;
+        atticTempRaw += config.thermometerInfo.atticCalibration;
+        outsideTempRaw += config.thermometerInfo.outsideCalibration;
 
         // put both our data points into averagers to smooth out any data glitches
         // then round to two decimal points (which is likely more precision than there really is)
-        outsideTemp = Math.round(outsideAverager.add(outsideTemp) * 100) / 100;
-        atticTemp = Math.round(atticAverager.add(atticTemp) * 100) / 100;
+        outsideTemp = Math.round(outsideAverager.add(outsideTempRaw) * 100) / 100;
+        atticTemp = Math.round(atticAverager.add(atticTempRaw) * 100) / 100;
+        
+        // share raw temperatures
+        socketListeners.broadcastTemperatureUpdateRaw(atticTempRaw, outsideTempRaw, atticTemp, outsideTemp);
 
         var lastTemps = data.getTemperatureItem(-1);
         if (lastTemps) {
@@ -595,6 +639,8 @@ function poll() {
         }
         if (recordTemp) {
             data.addTemperature(atticTemp, outsideTemp);
+            // let any listeners now, we have a newly recorded temperature
+            socketListeners.broadcastTemperatureUpdate(atticTemp, outsideTemp);
         }
 
         // make sure fan setting is set appropriately

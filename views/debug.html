@@ -4,12 +4,14 @@
 	.time {width: 120px;}
 	.atticTemp, .outsideTemp {width: 150px;}
 	.time, .atticTemp, .outsideTemp {float: left; background: transparent;}
-	.row {clear: both; width: 800px; padding: 2px 5px;}
+	.row {clear: both; padding: 2px 5px;}
 	.odd {background-color: #FFF;}
 	.even {background-color: #CCC;}
 	.spacer {clear: both;}
-	#liveFeed {height: 400px; overflow: auto;}
+	#liveFeed {height: 400px; width: 750px; overflow: auto;}
+	#liveFeedTitle {margin: 1em auto; font-size: 120%; font-weight: bold; text-align: center;}
 	#allTemps, #liveFeed {margin: 10px;}
+	#allTemps {width: 435px;}
 	
 </style>
 <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
@@ -19,6 +21,7 @@
 {{> header}}
 
 <div id="liveFeed">
+	<div id="liveFeedTitle">Live Data</div>
 	<div id="liveFeedContainer">
 		<div id="liveFeedHeader" class="row">
 			<div class="time">Time</div>
@@ -38,7 +41,7 @@
 		var container = $("#liveFeedContainer")
 		var newRow = header.clone();
 		newRow.removeAttr("id");
-		newRow.addClass(rowCntr++ % 2 ? "even" : "odd");
+		newRow.addClass(rowCntr++ % 2 ? "odd" : "even");
 		newRow.find(".time").text(new Date(data.t).toLocaleTimeString());
 		newRow.find(".atticTemp.raw").text(data.atticTempRaw.toFixed(3));
 		newRow.find(".outsideTemp.raw").text(data.outsideTempRaw.toFixed(3));
@@ -55,7 +58,7 @@
 	
 <hr>
 <div id="allTemps">
-<div style="height: 50px;">Number of temperatures recorded: {{temperatures.length}}</div>
+<div style="height: 50px;">Total Number of temperatures recorded: {{totalTemps}}<br>Displaying last hour's worth of data</div>
 <div class="row"> <div class="time">Time</div><div class="atticTemp">Attic Temperature</div><div class="outsideTemp">Outside Temperature</div></div>
 {{#each temperatures}}
 	<div class="row {{{stripes @index}}}"> 

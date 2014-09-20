@@ -18,7 +18,7 @@
 	.buttonRow button {margin-bottom: 15px;}
 	.tempMsg, .permMsg {color: red;}
 	.caption {display: table-row; font-size: 160%; font-weight: bold; text-align: center;}
-	.title {font-size: 160%; font-weight: bold; margin: 0 auto; text-align: center; margin-bottom: .5em;}
+	.title {font-size: 160%; font-weight: bold; margin: .3em auto .5em; text-align: center;}
 	.subTitle {font-size: 120%; margin: 0 auto; text-align: center; margin-bottom: 1em;}
 	
 </style>
@@ -27,14 +27,6 @@
 </head>
 <body>
 	{{> header}}
-	<p>Select the desired temperature units:</p>
-
-	<input checked="checked" id="celsius" name="temperatureUnits" type="radio" value="C" /> 
-	<label for="celsius">Celsius</label><br />
-	<input id="fahrenheit" name="temperatureUnits" type="radio" value="F" /> 
-	<label for="fahrenheit">Fahrenheit</label>
-	</form>
-	
 <div class="title">Control Settings</div>
 <form class="columnForm" id="settings" action="/settings" method="post">
 	<div class="formContainer">
@@ -52,9 +44,6 @@
 	<div class="formContainer" style="display: none;" id="settingsMsg">
 		<div class="tempMsg"></div>
 	</div>
-		
-	</div>
-</dl>	
 </form>
 <hr>
 <form id="on-off">
@@ -82,6 +71,17 @@
 		<div class="tempMsg"></div>
 	</div>
 </form>
+
+<hr>
+<div style="text-align: center">
+	<p>Select the desired temperature units:</p>
+
+	<input checked="checked" id="celsius" name="temperatureUnits" type="radio" value="C" /> 
+	<label for="celsius">Celsius</label><br />
+	<input id="fahrenheit" name="temperatureUnits" type="radio" value="F" /> 
+	<label for="fahrenheit">Fahrenheit</label>
+</div>	
+
 
 <script>
 // page initialization code

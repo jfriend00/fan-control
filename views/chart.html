@@ -11,8 +11,8 @@
 	
 </style>
 <script>
-    // temperature data - array of {t: dateTime, atticTemp: temp, outsideTemp: temp}
-	var temperatureData = {{{temperatures}}};
+// temperature data - array of arrays of the form [dateTime, atticTemp, outsideTemp]
+var temperatureData = {{{temperatures}}};
 </script>
 <script type="text/javascript" src="http://www.google.com/jsapi"></script>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
@@ -113,11 +113,11 @@ function drawChart(days) {
 	var item;
 	for (var i = 0, len = temperatureData.length; i < len; i++) {
 		item = temperatureData[i];
-		if (item.t > timeLimit) {
+		if (item[0] > timeLimit) {
 			if (!useFahrenheit) {
-				data.addRow([new Date(item.t), item.atticTemp, item.outsideTemp]);
+				data.addRow([new Date(item[0]), item[1], item[2]]);
 			} else {
-				data.addRow([new Date(item.t), toFahrenheit(item.atticTemp), toFahrenheit(item.outsideTemp)]);
+				data.addRow([new Date(item[0]), toFahrenheit(item[1]), toFahrenheit(item[2])]);
 			}
 		}
 	}

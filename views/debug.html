@@ -1,28 +1,70 @@
 <html>
 <head>
 <style>
-	.time {width: 200px;}
-	.atticTemp, .outsideTemp {width: 200px;}
+	.time {width: 120px;}
+	.atticTemp, .outsideTemp {width: 150px;}
 	.time, .atticTemp, .outsideTemp {float: left; background: transparent;}
-	.row {clear: both; width: 600px;}
+	.row {clear: both; width: 800px; padding: 2px 5px;}
 	.odd {background-color: #FFF;}
 	.even {background-color: #CCC;}
 	.spacer {clear: both;}
+	#liveFeed {height: 400px; overflow: auto;}
+	#allTemps, #liveFeed {margin: 10px;}
 	
 </style>
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
 </head>
 <body>
-	{{> header}}
+{{> header}}
 
-	<div style="height: 50px;">Number of temperatures recorded: {{temperatures.length}}</div>
-	<div class="row"> <div class="time">Time</div><div class="atticTemp">Attic Temperature</div><div class="outsideTemp">Outside Temperature</div></div>
-	{{#each temperatures}}
-		<div class="row {{{stripes @index}}}"> 
-			<div class="time">{{prettifyDate t}}</div>
-			<div class="atticTemp">{{formatTemp atticTemp ../units}}</div>
-			<div class="outsideTemp">{{formatTemp outsideTemp ../units}}</div>
+<div id="liveFeed">
+	<div id="liveFeedContainer">
+		<div id="liveFeedHeader" class="row">
+			<div class="time">Time</div>
+			<div class="atticTemp raw">Attic Temp Raw</div>
+			<div class="atticTemp avg">Attic Temp Avg</div>
+			<div class="outsideTemp raw">Outside Temp Raw</div>
+			<div class="outsideTemp avg">Outside Temp Avg</div>
 			<div class="spacer"></div>
 		</div>
-	{{/each}}
+	</div>
+</div>
+
+<script>
+	var rowCntr = 0;
+	enableRawUpdates(function(data) {
+		var header = $("#liveFeedHeader")
+		var container = $("#liveFeedContainer")
+		var newRow = header.clone();
+		newRow.removeAttr("id");
+		newRow.addClass(rowCntr++ % 2 ? "even" : "odd");
+		newRow.find(".time").text(new Date(data.t).toLocaleTimeString());
+		newRow.find(".atticTemp.raw").text(data.atticTempRaw.toFixed(3));
+		newRow.find(".outsideTemp.raw").text(data.outsideTempRaw.toFixed(3));
+		newRow.find(".atticTemp.avg").text(data.atticTempAvg.toFixed(3));
+		newRow.find(".outsideTemp.avg").text(data.outsideTempAvg.toFixed(3));
+		newRow.hide().insertAfter(header).slideDown();
+		var rows = container.find(".row");
+		if (rows.length > 101) {
+			rows.last().remove();
+		}
+		
+	});
+</script>
+	
+<hr>
+<div id="allTemps">
+<div style="height: 50px;">Number of temperatures recorded: {{temperatures.length}}</div>
+<div class="row"> <div class="time">Time</div><div class="atticTemp">Attic Temperature</div><div class="outsideTemp">Outside Temperature</div></div>
+{{#each temperatures}}
+	<div class="row {{{stripes @index}}}"> 
+		<div class="time">{{prettifyDate t}}</div>
+		<div class="atticTemp">{{formatTemp atticTemp ../units}}</div>
+		<div class="outsideTemp">{{formatTemp outsideTemp ../units}}</div>
+		<div class="spacer"></div>
+	</div>
+{{/each}}
+</div>
 </body>
 </html>

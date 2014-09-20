@@ -1,1 +1,15 @@
-<div id="header"><a href="/settings">Settings</a> <a href="/debug">Debug</a> <a href="/chart">Chart</a> <a href="/api/status">Status</a></div>
+{{> header_prep}}
+<div id="header">
+	<div id="indicators">
+		<span>Fan: <span id="fanDisplay">Off</span></span>&nbsp;&nbsp;&nbsp; 
+		<span>Attic: <span id="atticTemp"></span>&deg;F</span>&nbsp;&nbsp;&nbsp; 
+		<span>Outside: <span id="outsideTemp"></span>&deg;F</span>
+	</div>
+	<div id="navbar" class="nav">
+		<ul>
+			<li><a href="/settings">Settings</a></li>
+			<li><a href="/debug">Debug</a></li>
+			<li><a href="/chart">Chart</a></li>
+		</ul>
+	</div>
+</div>

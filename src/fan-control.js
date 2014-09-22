@@ -95,15 +95,22 @@ app.get('/', function(req, res) {
 });
 
 // display log files
+// todo - limit log file display size if they are very large
 app.get('/logs', function(req, res) {
     var p1 = fs.readFileAsync("/home/pi/logs/fan-control.log");
     var p2 = fs.readFileAsync("/home/pi/logs/fan-control.err");
-    Promise.all([p1, p2]).spread(function(logFile, errFile) {
-        console.log("got files");
-        res.render('logs', {logData: logFile, errData: errFile});
+    Promise.settle([p1, p2]).spread(function(logFile, errFile) {
+        var templateData = {logData: "", errData: ""};
+        if (logFile.isFulfilled()) {
+            templateData.logData = logFile.value();
+        }
+        if (errFile.isFulfilled()) {
+            templateData.errData = errFile.value();
+        }
+        res.render('logs', templateData);
     }).catch(function(e) {
         console.log("err getting log files");
-        // don't know what to display here
+        // figure out what to display here
         res.render(e);
     });
 });
@@ -452,7 +459,6 @@ config.load();
                 if (err) {
                     console.log("error reading gpio port " + port + " at startup");
                 } else {
-                    console.log("read GPIO port " + port + " with value: " + value);
                     // at least one fan is on so indicate that in our data
                     if (value) {
                         data.fanOn = true;

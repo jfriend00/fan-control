@@ -9,7 +9,6 @@ var bodyParser = require('body-parser');
 var validate = require('./validate');
 var timeAverager = require('./averager').timeAverager;
 var session = require('express-session');
-var flash = require('connect-flash');
  
 var data = require('./fan-data.js');
 
@@ -17,8 +16,8 @@ var app = express();
 
 
 // static routes that get no further processing
-app.use('/lib', express.static(__dirname + '/lib'));
 app.use('/img', express.static(__dirname + '/img'));
+app.use('/lib', express.static(__dirname + '/lib'));
 
 // say where partials are
 hbs.registerPartials(__dirname + '/views/partials');
@@ -28,7 +27,6 @@ hbs.registerPartials(__dirname + '/views/partials');
 // temperatureUnits: "C" | "F"
 app.use(cookieParser());
 app.use(session({secret: 'fanControl', saveUninitialized: true, resave: true}));
-app.use(flash());
 app.use(function(req, res, next) {
     // fill in default values for common cookies so we don't have to do it elsewhere in the code
     req.cookies.temperatureUnits = req.cookies.temperatureUnits || "C";
@@ -96,8 +94,18 @@ app.get('/', function(req, res) {
     res.render('index', tempData);    
 });
 
-app.get('/index', function(req, res) {
-    res.render('index', {test: "Hello World"});
+// display log files
+app.get('/logs', function(req, res) {
+    var p1 = fs.readFileAsync("/home/pi/logs/fan-control.log");
+    var p2 = fs.readFileAsync("/home/pi/logs/fan-control.err");
+    Promise.all([p1, p2]).spread(function(logFile, errFile) {
+        console.log("got files");
+        res.render('logs', {logData: logFile, errData: errFile});
+    }).catch(function(e) {
+        console.log("err getting log files");
+        // don't know what to display here
+        res.render(e);
+    });
 });
 
 // add data to a data structure (usually a handlebars data structure)
@@ -161,8 +169,8 @@ app.route('/settings')
 
 app.post('/onoff', urlencodedParser, function(req, res) {
     var formatObj = {
-        // value must be more than 5 minutes, less than 12 hours
-        "fanControlReturnToAuto": {type: "minToMs", preRangeLow: 1, preRangeHigh: 12 * 60}
+        // value must be more than 5 minutes, can be set to many days if desired
+        "fanControlReturnToAuto": {type: "duration", units: "fanControlReturnToAutoUnits", rangeLow: 1000 * 60 * 5}
     };
     
     var results = validate.parseDataObject(req.body, formatObj);

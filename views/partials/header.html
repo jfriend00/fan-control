@@ -1,4 +1,82 @@
-{{> header_prep}}
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function() {
+	"use strict";
+	var socket = io('/updates');
+	var hidden = true;
+	socket.on("temperatureUpdateMsg", function(data) {
+		function updatePage() {
+			$("#atticTemp").text(data.atticTemp.toFixed(1));
+			$("#outsideTemp").text(data.outsideTemp.toFixed(1));
+		}
+		$(document).ready(updatePage);
+	});
+	socket.on("fanUpdateMsg", function(data) {
+		$(document).ready(function() {
+			$("#fanDisplay").text(data);
+			if (hidden) {
+				hidden = false;
+				$("#indicators").css("visibility", "visible");
+			}
+		});
+	});
+	window.enableRawUpdates = function(callback) {
+		// join the raw room and listen for the raw event
+		
+		function join() {
+			// make sure we don't get double notifications in case of a reconnect
+			socket.off("temperatureUpdateRawMsg");
+			socket.on("temperatureUpdateRawMsg", callback);
+			socket.emit("joinRoom", "raw");
+		}
+		
+		// if already connected, we can join now
+		if (socket.connected) {
+			console.log("already connected, sending join request");
+			join();
+		} else {
+			// otherwise, wait till connected, then join
+			console.log("register for connect event before join request");
+			socket.on('connect', function() {
+				console.log("received connect event: " + new Date());
+				join();
+			});
+		}
+	};
+	window.disableRawUpdates = function(callback) {
+		// stop listening and leave the room
+		socket.emit("leaveRoom", "raw");
+		socket.off("temperatureUpdateRawMsg");
+	};
+})();
+</script>
+<style>
+	body {margin: 0;}
+	#indicators {float: right; padding: 5px 8px 0; visibility: hidden;}
+	.nav ul {
+		margin: 0;
+		padding: 5px 0;
+		list-style-type: none;
+		text-align: left;
+	}
+	
+	.nav li {
+		display: inline;
+		margin: 0 8px;
+	}
+	
+	.nav a {
+		text-decoration: none;
+		color: #000;
+		padding: 2px 0 1px 1;
+	}
+	
+	#header {
+		background-color: #BBB;
+		font-family: "Arial";
+	}
+	
+</style>
 <div id="header">
 	<div id="indicators">
 		<span>Fan: <span id="fanDisplay">Off</span></span>&nbsp;&nbsp;&nbsp; 
@@ -8,8 +86,9 @@
 	<div id="navbar" class="nav">
 		<ul>
 			<li><a href="/settings">Settings</a></li>
-			<li><a href="/debug">Debug</a></li>
 			<li><a href="/chart">Chart</a></li>
+			<li><a href="/logs">Logs</a></li>
+			<li><a href="/debug">Debug</a></li>
 		</ul>
 	</div>
 </div>

@@ -1,26 +1,29 @@
 <html>
 <head>
-
+{{> common_head}}
 <style>
-
+container {padding: 10px;}
+.fileDisplay {font-size: 10px;}
+.title {font-weight: bold; font-size: 140%;}
 </style>
 </head>
 <body>
-
-<div>Log File</div>
+{{> header}}
+<div id="container">
+<div class="title">Log File</div>
 <div class="fileDisplay">
 <pre>
 {{logData}}
 </pre>
 </div>
 
-<div>Err File</div>
+<div class="title">Err File</div>
 <div class="fileDisplay">
 <pre>
 {{errData}}
 </pre>
 </div>
-
+</div>
 
 </body>
 </html>

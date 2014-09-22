@@ -26,7 +26,8 @@ var convertTypeMap = {
     "CtoF": parseNumber,
     "FDeltaToC": parseNumber,
     "CDeltaToF": parseNumber,
-    "minToMs": parseNumber
+    "minToMs": parseNumber,
+    "duration": parseNumber,
 };
 
 function parseNumber(tempStr, args) {
@@ -65,6 +66,20 @@ function parseNumber(tempStr, args) {
             temp = Math.round(temp * 1000 * 60);
         }
         
+        if (convert === "duration" && args.units) {
+            switch(args.units) {
+                case "minutes":
+                    temp = Math.round(temp * 1000 * 60);
+                    break;
+                case "hours":
+                    temp *= 1000 * 60 * 60;
+                    break;
+                case "days":
+                    temp *= 1000 * 60 * 60 * 24;
+                    break;
+            }
+        }
+        
         // now do any range checking
         if ("rangeLow" in args) {
             if (temp < args.rangeLow) {
@@ -100,6 +115,10 @@ function parseDataObject(dataObj, formatObj) {
         fn = convertTypeMap[convertType];
         // if not in convertTypeMap, drop it from the output
         if (fn) {
+            // if we have a units specified as another object, then fetch that value
+            if (args.units && dataObj[args.units]) {
+                args.units = dataObj[args.units];
+            }
             result = fn(dataStr, args);
             if (result !== null) {
                 output[key] = result;

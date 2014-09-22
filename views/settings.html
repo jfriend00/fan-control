@@ -1,5 +1,6 @@
 <html>
 <head>
+{{> common_head}}
 <style>
 	.time {width: 200px;}
 	.atticTemp, .outsideTemp {width: 200px;}
@@ -8,69 +9,104 @@
 	.odd {background-color: #FFF;}
 	.even {background-color: #CCC;}
 	.spacer {clear: both;}
+
 	
-	.formContainer {display: table; margin: 0 auto 20px;}
-	.columnForm p {display: table-row;}
-	.columnForm label {display: table-cell; text-align: right; padding-right: 10px;}
-	.columnForm input {display: table-cell;}
-	.formContainer input {width: 8em; margin-top: 1em;}
-	.buttonRow {text-align: center; display: table-row;}
-	.buttonRow button {margin-bottom: 15px;}
+	/* generic form element CSS */
+	select {padding: 1px;}
+	input {padding-left: 2px;}
+
+	/* generic two column form table styles */
+	.two_column table {margin: 0 auto;}
+	.two_column td {padding: 5px 0;}
+	.two_column td:first-child {text-align: right; padding-right: 5px;}
+	/* full row formatting */
+	.two_column .fullRow td {padding: 5px 0; text-align: center;}
+	.two_column .title {font-size: 160%; padding-bottom: 15px;}
+	.two_column .buttonRow td {padding-top: 15px;}
+	
+	/* specific formatting for the settings form and table */
+	#settings input {width: 6em;}
+	#settings {margin-top: 20px; margin-bottom: 20px;}
+	
+	.myForm .title {font-size: 160%; font-weight: bold; margin: .3em auto .5em; text-align: center;}
+	.myForm .subTitle {font-size: 120%; margin: 0 auto; text-align: center; margin-bottom: 1em;}
+	.myForm.center{text-align: center;}
+	.myForm .centerRow {margin: 1em 0;}
+	
+	#on-off input {width: 6em;}
+	#on-off {margin-top: 20px; margin-bottom: 20px;}
+	
+	.tempMsg {display: none;}
 	.tempMsg, .permMsg {color: red;}
-	.caption {display: table-row; font-size: 160%; font-weight: bold; text-align: center;}
-	.title {font-size: 160%; font-weight: bold; margin: .3em auto .5em; text-align: center;}
-	.subTitle {font-size: 120%; margin: 0 auto; text-align: center; margin-bottom: 1em;}
-	
+
 </style>
 <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 <script src="http://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
 </head>
 <body>
-	{{> header}}
-<div class="title">Control Settings</div>
-<form class="columnForm" id="settings" action="/settings" method="post">
-	<div class="formContainer">
-		<p><label>Minimum Attic Temperature (&deg;F):</label><input name="minTemp" value="{{minTemp}}"></p>
-		<p><label>Temperature Difference Trigger (&deg;F):</label><input name="deltaTemp" value="{{deltaTemp}}"></p>
-		<p><label>Hysteresis Temperature Delta (&deg;F):</label><input name="overshoot" value="{{overshoot}}"></p>
-		<p><label>Wait Time Before Restart (mins):</label><input name="waitTime" value="{{waitTime}}"></p>
-		<p><label>Averaging Time Temperature Readings (mins):</label><input name="outsideAveragingTime" value="{{outsideAveragingTime}}"></p>
-	</div>
-	<div class="formContainer">
-		<p class="buttonRow">
-			<button type="submit">Save</button>
-		</p>
-	</div>
-	<div class="formContainer" style="display: none;" id="settingsMsg">
-		<div class="tempMsg"></div>
-	</div>
+{{> header}}
+
+<form id="settings" class="two_column" action="/settings" method="post">
+<table>
+	<tbody>
+		<tr class="fullRow">
+			<th class="title" colspan="2">Control Settings</th>
+		</tr>
+		<tr>
+			<td>Minimum Attic Temperature (&deg;F):</td>
+			<td><input name="minTemp" value="{{minTemp}}"></td>
+		</tr>
+		<tr>
+			<td>Temperature Difference Trigger (&deg;F):</td>
+			<td><input name="deltaTemp" value="{{deltaTemp}}"></td>
+		</tr>
+		<tr>
+			<td>Hysteresis Temperature Delta (&deg;F):</td>
+			<td><input name="overshoot" value="{{overshoot}}"></td>
+		</tr>
+		<tr>
+			<td>Wait Time Before Restart (mins):</td>
+			<td><input name="waitTime" value="{{waitTime}}"></td>
+		</tr>
+		<tr>
+			<td>Averaging Time Temperature Readings (mins):</td>
+			<td><input name="outsideAveragingTime" value="{{outsideAveragingTime}}"></td></tr>
+		<tr class="fullRow buttonRow">
+			<td colspan="2"><button type="submit">Save</button></td>
+		</tr>
+		<tr class="fullRow tempMsg">
+			<td colspan="2"><div class="msg"></div></td>
+		</tr>
+	</tbody>
+</table>
 </form>
+
 <hr>
-<form id="on-off">
+<form id="on-off" class="myForm center">
 	<div class="title">Fan Control</div>
 	<div class="subTitle">Control is currently set to: <span id="fanControlType">{{fanControl}}</span></div>
-	<div class="formContainer">
-		<p class="buttonRow">
-			{{#if fanState}}
-			<button id="turnFanOff" name="action" value="off">Turn Fan Off</button>
-			<button id="turnFanOn" name="action" value="on" style="display: none;">Turn Fan On</button>
-			{{else}}
-			<button id="turnFanOff" name="action" value="off" style="display: none;">Turn Fan Off</button>
-			<button id="turnFanOn" name="action" value="on">Turn Fan On</button>
-			{{/if}}
-			<label> And Resume Auto After (mins): </label>
-				<input name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}">
-		</p>
-		<p class="buttonRow">
-			<button id="turnFanAuto" name="action" value="auto" 
-				{{#ifCond fanControl "==" "auto"}} style="display: none;" {{/ifCond}}>
-				Set Fan to Auto</button>
-		</p>
+	<div class="centerRow">
+		{{#if fanState}}
+		<button id="turnFanOff" name="action" value="off">Turn Fan Off</button>
+		<button id="turnFanOn" name="action" value="on" style="display: none;">Turn Fan On</button>
+		{{else}}
+		<button id="turnFanOff" name="action" value="off" style="display: none;">Turn Fan Off</button>
+		<button id="turnFanOn" name="action" value="on">Turn Fan On</button>
+		{{/if}}
+		<label> And Resume Auto After: </label>
+			<input name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}"> 
+			<select name="fanControlReturnToAutoUnits" id="fanControlReturnToAutoUnits"><option value="minutes" selected="selected">Minutes</option><option value="hours">Hours</option><option value="days">Days</option></select>
 	</div>
-	<div class="formContainer" style="display: none;" id="onOffMsg">
-		<div class="tempMsg"></div>
+	<div class="centerRow">
+		<button id="turnFanAuto" name="action" value="auto" 
+			{{#ifCond fanControl "==" "auto"}} style="display: none;" {{/ifCond}}>
+			Set Fan to Auto</button>
+	</div>
+	<div class="tempMsg">
+		<div class="msg"></div>
 	</div>
 </form>
+
 
 <hr>
 <div style="text-align: center">
@@ -94,9 +130,9 @@
 		$.cookie("temperatureUnits", this.value, { expires: 365 * 10, path: '/' });
 	}).filter("[value='" + temperatureUnits + "']").prop("checked", true);
 	
-	function showTempMsg(id, msg, t) {
+	function showTempMsg(selector, msg, t) {
 		t = t || 10;
-		$("#" + id).show().find(".tempMsg").html(msg).end().delay(t * 1000).fadeOut(2000);
+		$(selector).find(".tempMsg").show().find(".msg").html(msg).end().delay(t * 1000).fadeOut(2000);
 	}
 	
 	// hook up event handlers for the forms
@@ -105,9 +141,9 @@
 		$.post("/settings", $(this).serialize()).done(function(result) {
 			// show settings saved message here
 			if (result.status === "ok") {
-				showTempMsg("settingsMsg", "Settings Saved Successfully");
+				showTempMsg("#settings", "Settings Saved Successfully");
 			} else {
-				showTempMsg("settingsMsg", result.status);
+				showTempMsg("#settings", result.status);
 			}
 		});
 	});
@@ -124,7 +160,7 @@
 		var data = button.closest("form").serialize() + "&action=" + action;
 		$.post("/onoff", data).done(function(result) {
 			if (result.status === "ok") {
-				showTempMsg("onOffMsg", "Fan set to " + action);
+				showTempMsg("#on-off", "Fan set to " + action);
 				$("#fanControlType").text(action);
 				if (action === "auto") {
 					$("#turnFanAuto").hide();
@@ -138,7 +174,7 @@
 				}
 				
 			} else {
-				showTempMsg("onOffMsg", result.status);
+				showTempMsg("#on-off", result.status);
 			}
 		});
 	});

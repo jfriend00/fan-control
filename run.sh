@@ -9,7 +9,7 @@ if [ -z "$PIDS" ]; then
     if [[ $ANSWER != [nN] ]]; then
         echo "starting initial fan-control.js ..."
         cd /home/pi
-        forever -a --minUptime=3000 --spinSleepTime=1000 --killSignal=SIGTERM -l  /home/pi/logs/fan-control.log -e /home/pi/logs/fan-c$
+        forever -a --minUptime=3000 --spinSleepTime=1000 --killSignal=SIGTERM -l  /home/pi/logs/fan-control.log -e /home/pi/logs/fan-control.err --sourceDir=/home/pi start fan-control.js
     else
         echo "skipping fan-control.js"
     fi

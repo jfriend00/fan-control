@@ -14,6 +14,8 @@
 <script>
 // temperature data - array of arrays of the form [dateTime, atticTemp, outsideTemp]
 var temperatureData = {{{temperatures}}};
+// onOffData is an array of [dateTime, str] - where str is "on" or "off"
+var onOffData = {{{onOffData}}};
 </script>
 <script type="text/javascript" src="http://www.google.com/jsapi"></script>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
@@ -69,7 +71,7 @@ $("#numDays").on("change", function(e) {
 		resetReloadTimer();
 		updateURL();
 		drawChartGetDays();
-	}, 500);
+	}, 750);
 });
 
 // parse days out of field
@@ -111,28 +113,76 @@ function drawChart(days) {
 	data.addColumn('datetime', 'time', 'time');
 	data.addColumn('number', 'attic', 'attic');
 	data.addColumn('number', 'outside', 'outside');
-	var item;
+	data.addColumn('number', 'on', 'on');
+	var item, max = 0, min = 1000, t1, t2, lastTime;
+	
 	for (var i = 0, len = temperatureData.length; i < len; i++) {
 		item = temperatureData[i];
 		if (item[0] > timeLimit) {
 			if (!useFahrenheit) {
-				data.addRow([new Date(item[0]), item[1], item[2]]);
+				t1 = item[1];
+				t2 = item[2];
 			} else {
-				data.addRow([new Date(item[0]), toFahrenheit(item[1]), toFahrenheit(item[2])]);
+				t1 = toFahrenheit(item[1]);
+				t2 = toFahrenheit(item[2]);
 			}
+			// accumulate max temperature
+			max = Math.max(max, t1, t2);
+			min = Math.min(min, t1, t2);
+			data.addRow([new Date(item[0]), t1, t2, null]);
+			lastTime = item[0];
 		}
+		
+	}
+	var onVal = Math.round(max + 1);
+	var offVal = Math.round(min - 1);
+	var lastVal, first = true, val;
+	
+	// now add the on/off data
+	for (var i = 0; i < onOffData.length; i++) {
+		item = onOffData[i];
+		val = item[1] === "on" ? onVal: offVal;
+		if (item[0] > timeLimit) {
+			// fill in a starter point at the start of the interval if it's our first point and we're using a timeLimit
+			if (first && timeLimit) {
+				// this point goes from the timeLimit with the value of the first point in the range
+				data.addRow([new Date(timeLimit - 1), null, null, val]);
+				first = false;
+			}
+			// if we are changing the value, then write a stop point for the previous value before we write our new value
+			if (lastVal && item[1] !== lastVal) {
+			    // opposite value for our stop point
+				data.addRow([new Date(item[0] - 1), null, null, item[1] === "on" ? offVal: onVal]);
+			}
+			data.addRow([new Date(item[0]), null, null, val]);
+			lastVal = item[1];
+		}
+	}
+	if (lastTime) {
+		// extend the last on/off event until the end
+		data.addRow([new Date(lastTime + 1), null, null, val]);
 	}
 
 	var options = {
 	  title: 'Temperatures',
-	  curveType: 'function',
+	  //curveType: 'function',
 	  height: 500,
 	  lineWidth: 1,
 	  legend: {position: 'bottom'}
 	};
+	
+	var gve = google.visualization.events;
 
 	var chart = new google.visualization.LineChart(document.getElementById('chart_div'));
-
+	gve.addListener(chart, 'ready', function() {
+		gve.addListener(chart, 'select', function(a, b, c) {
+			var sel = chart.getSelection();
+			if (sel.length && sel[0] && sel[0].column === 3) {
+				console.log("click on/off data");
+			}
+		});
+	});
+	
 	chart.draw(data, options);
 }
 $(window).resize(drawChartGetDays);

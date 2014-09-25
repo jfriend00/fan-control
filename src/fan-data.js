@@ -62,14 +62,14 @@ var data = {
             var data = [], item, limit = Math.min(index + num, self.fanOnOffEvents.length);
             for (var i = index; i < limit; i++) {
                 item = self.fanOnOffEvents[i];
-                data.push(item.t + "," + item.event + "\r\n");
+                data.push(item.t + "," + item.event + "," + item.reason.replace(",", "-") + "\r\n");
             }
             return fs.writeAsyncCheck(fd, data.join(""));
         }
 
         var fd, item, i;
         var tempHeader = '[temperatures] {"formatVersion": "1", "fields": ["t", "atticTemp", "outsideTemp"]}\r\n';
-        var fanHeader = '[fanOnOff] {"formatVersion": "1", "fields": ["t", "event"]}\r\n';
+        var fanHeader = '[fanOnOff] {"formatVersion": "1", "fields": ["t", "event", "reason"]}\r\n';
         var tempFilename = filename.replace(/txt$/, "tmp");        
         
         if (sync) {
@@ -86,7 +86,7 @@ var data = {
                 fs.writeSyncCheck(fd, fanHeader);
                 for (i = 0; i < self.fanOnOffEvents.length; i++) {
                     item = self.fanOnOffEvents[i];
-                    fs.writeSyncCheck(fd, new Buffer(item.t + "," + item.event + "\r\n"));
+                    fs.writeSyncCheck(fd, new Buffer(item.t + "," + item.event + "," + item.reason.replace(",", "-") + "\r\n"));
                 }
                 fs.closeSync(fd);
                 fd = null;
@@ -232,15 +232,16 @@ var data = {
                     }
                 },
                 fanOnOff: function(line) {
-                    // 1409778007274, on
+                    // 1409778007274, on, reason
                     var valid = false;
                     var items = line.split(",");
                     if (items.length >= 2) {
                         var t = parseInt(items[0].trim(), 10);
                         var event = items[1].toLowerCase();
+                        var reason = items[2] || "";
                         if (t && (event === "on" || event === "off")) {
                             valid = true;
-                            self.addFanOnOffEvent(event, t);
+                            self.addFanOnOffEvent(event, reason, t);
                         }
                     }
                     if (!valid) {
@@ -387,12 +388,12 @@ var data = {
         }
     },
     
-    addFanOnOffEvent: function(event, time) {
+    addFanOnOffEvent: function(event, reason, time) {
         var self = this;
         time = time || Date.now();
         
         function add() {
-            self.fanOnOffEvents.push({t: time, event: event});
+            self.fanOnOffEvents.push({t: time, reason: reason, event: event});
         }
         
         if (this.dataBlock) {
@@ -431,6 +432,35 @@ var data = {
                 return;
             }
         }
+    },
+    
+    // iterate on/off events
+    eachEvent: function(fn) {
+        var retVal
+        for (var i = 0, len = this.fanOnOffEvents.length; i < len; i++) {
+            retVal = fn(this.fanOnOffEvents[i]);
+            if (retVal === true) {
+                return;
+            }
+        }
+    },
+    
+    getFanOnOffDataSmallJSON: function() {
+        // make on/off data in an efficient form as an array of these [t, "on"]
+        var onOff = [];
+        data.eachEvent(function(item) {
+            onOff.push([item.t, item.event, item.reason || ""]);
+        });
+        return JSON.stringify(onOff);
+    },
+    
+    getTemperatureDataSmallJSON: function() {
+        // build client-side data structure as an array of these [time, t1, t2]
+        var temps = [];
+        data.eachTemperature(function(item) {
+            temps.push([item.t, item.atticTemp, item.outsideTemp]);
+        });
+        return JSON.stringify(temps);
     },
     
     /* This is a sample iteration of temperature data 

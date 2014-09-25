@@ -159,6 +159,12 @@ app.route('/settings')
     
     // validate settings and only save items that pass validation
     var results = validate.parseDataObject(req.body, formatObj);
+    if (results.err) {
+        res.json({status: "validateIssue", err: results.err});
+        return;
+    }
+    
+    results = results.output;
     for (var item in results) {
         config[item] = results[item];
     }
@@ -170,7 +176,7 @@ app.route('/settings')
     config.save().then(function() {
         res.json({status: "ok"});    
     }).catch(function(e) {
-        res.json({status: "Config file write failed on server"});    
+        res.json({status: "Config file write failed on server"});
     });
 });
 
@@ -181,6 +187,11 @@ app.post('/onoff', urlencodedParser, function(req, res) {
     };
     
     var results = validate.parseDataObject(req.body, formatObj);
+    if (results.err) {
+        res.json({status: "validateIssue", err: results.err});
+        return;
+    }
+    results = results.output;
     var action = req.body.action;
     if (results.fanControlReturnToAuto || action === "auto") {
         // calc the actual time in the future to return to auto
@@ -191,11 +202,11 @@ app.post('/onoff', urlencodedParser, function(req, res) {
         if (action === "off") {
             config.fanControlReturnToAuto = t;
             config.fanControl = "off";
-            setFan(false, true);
+            setFan(false, "manual turn off", true);
         } else if (action === "on") {
             config.fanControlReturnToAuto = t;
             config.fanControl = "on";
-            setFan(true, true);
+            setFan(true, "manual turn on", true);
         } else if (action === "auto") {
             config.fanControl = "auto";
             // don't explicitly call setFan() here at all
@@ -205,18 +216,11 @@ app.post('/onoff', urlencodedParser, function(req, res) {
         }
         config.save();
         res.json({status: status});
+    } else {
+        res.json({status: "return to auto - invalid value"});
     }
 });
 
-function makeTemperatureDataForClient() {
-    // build client-side data structure
-    var temps = [];
-    data.eachTemperature(function(item) {
-        temps.push([item.t, item.atticTemp, item.outsideTemp]);
-    });
-    return temps;
-}
-    
 app.get('/debug', function(req, res) {
     var tempData = {
         // last hour's worth of data
@@ -229,8 +233,8 @@ app.get('/debug', function(req, res) {
 
 app.get('/chart', function(req, res) {
     var tempData = {
-        // todo - trim the data down
-        temperatures: JSON.stringify(makeTemperatureDataForClient()),
+        temperatures: data.getTemperatureDataSmallJSON(),
+        onOffData: data.getFanOnOffDataSmallJSON(),
         units: req.cookies.temperatureUnits
     };
     res.render('chart', tempData);
@@ -462,6 +466,8 @@ config.load();
                     // at least one fan is on so indicate that in our data
                     if (value) {
                         data.fanOn = true;
+                        // hmmm, found the fan on so record it as so
+                        data.addFanOnOffEvent("on", "GPIO port found on at startup");
                     }
                 }
             });
@@ -482,11 +488,14 @@ data.init({
 process.on('exit', function(code) {
     console.log("Exiting process with code: " + code);
     
-    // write data synchronously here
-    data.writeData(config.dataFilename, true);
-    
     // synchronously turn off both fans upon shut-down
     setFanHardwareOnOff(false, 0, true);
+    
+    // make sure there's an off event when server shuts down
+    data.addFanOnOffEvent("off", "process shutdown");
+    
+    // write data synchronously here
+    data.writeData(config.dataFilename, true);
     
 }).on('SIGINT', function() {
     console.log("SIGINT signal received - exiting");
@@ -496,9 +505,9 @@ process.on('exit', function(code) {
     process.exit(3);
 });
 
-// returns true for fan should be on
-// returns false for fan should be off
+//returns {state: bool, reason: str}
 function checkFanAction(atticTemp, outsideTemp) {
+    var reasonExtra = "";
     var curTime = Date.now();
     // if it isn't on auto
     if (config.fanControl !== "auto" && config.fanControlReturnToAuto !== 0) {
@@ -506,15 +515,16 @@ function checkFanAction(atticTemp, outsideTemp) {
         if (curTime >= config.fanControlReturnToAuto) {
             config.fanControl = "auto";
             config.fanControlReturnToAuto = 0;
+            reasonExtra = "return to auto - ";
         }
     }
     
     if (config.fanControl === "off") {
         // make sure fan is off
-        return false;
+        return {state: false, reason: "manual off"};
     } else if (config.fanControl === "on") {
         // make sure fan is on
-        return true;
+        return {state: true, reason: "manual on"};
     }
     
     // from here on is the "auto" behavior
@@ -526,7 +536,7 @@ function checkFanAction(atticTemp, outsideTemp) {
         // this is to keep it from turning back on right away if there's a 
         // little temperature rebound when the fan is turned off
         if (atticTemp <= (config.minTemp - config.overshoot)) {
-            return false;
+            return {state: false, reason: reasonExtra + "attic temp not above minTemp - overshoot"};
         }
         
         // if fan already on, see if we should turn it off
@@ -535,23 +545,23 @@ function checkFanAction(atticTemp, outsideTemp) {
         // to decide to now turn the fan off.  This keeps it from turning on at config.deltaTemp,
         // cooling down 0.1 degrees and then turning off (often called hysteresis)
         if (delta <= (config.deltaTemp - config.overshoot)) {
-            return false;
+            return {state: false, reason: reasonExtra + "delta temp too low"};
         }
         
     } else {
         // when fan is off, never turn it on if it's below config.minTemp
         if (atticTemp <= config.minTemp) {
-            return false;
+            return {state: false, reason: reasonExtra + "attic temp not above minTemp"};
         }
     
         // fan is off, see if we should turn it on
         // delta has to be more than config.deltaTemp to turn it on
         if (delta >= config.deltaTemp) {
-            return true;
+            return {state: true, reason: reasonExtra + "delta temp exceeded"};
         }
     }
     // don't change fan setting, stay with current setting
-    return data.fanOn;
+    return {state: data.fanOn, reason: "no change"};
 }
 
 // set the fan to the desired setting
@@ -560,7 +570,7 @@ function checkFanAction(atticTemp, outsideTemp) {
 // The ignoreTime argument says to change the fan now, without regard for the data.lastFanChangetime
 // ignoreTime is normally not passed except for manual override
 
-function setFan(fanOn, ignoreTime) {
+function setFan(fanOn, reason, ignoreTime) {
     var curTime = Date.now();
     if (fanOn !== data.fanOn) {
         // if we are turning off, we can act right away
@@ -577,7 +587,7 @@ function setFan(fanOn, ignoreTime) {
             data.fanOn = fanOn;
             data.lastFanChangeTime = curTime;
             // add fan change event
-            data.fanOnOffEvents.push({t: Date.now(), event: fanOn ? "on" : "off"});
+            data.addFanOnOffEvent(fanOn ? "on" : "off", reason);
             console.log("fan changed to " + (fanOn ? "on" : "off"));
         } else {
             console.log("fan turn on holding for waitTime");
@@ -660,7 +670,8 @@ function poll() {
         }
 
         // make sure fan setting is set appropriately
-        setFan(checkFanAction(atticTemp, outsideTemp));
+        var result = checkFanAction(atticTemp, outsideTemp);
+        setFan(result.state, result.reason);
         
         // age any data that needs to be thrown away
         data.ageData();

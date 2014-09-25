@@ -31,26 +31,40 @@ var convertTypeMap = {
 };
 
 function parseNumber(tempStr, args) {
+    var result = {val: null};
     try {
         var temp, convert = args.type;
         tempStr = tempStr.trim();
-        if (typeof tempStr !== "string" || !simpleNumberRegex.test(tempStr)) {
-            return null;
+        if (typeof tempStr !== "string") {
+            result.err = "data not a string";
+            return result;
         }
-        temp = parseFloat(tempStr);
-        if (isNaN(temp)) {
-            return null;
+        if (!simpleNumberRegex.test(tempStr)) {
+            result.err = "contains non-numeric characters";
+            return result;
+        }
+        try {
+            temp = parseFloat(tempStr);
+            if (isNaN(temp)) {
+                result.err = "invalid number";
+                return result;
+            }
+        } catch(e) {
+            result.err = "parsing number failed";
+            return result;
         }
         
         // now do any range checking
         if ("preRangeLow" in args) {
             if (temp < args.preRangeLow) {
-                return null;
+                result.err = "value too low";
+                return result;
             }
         }
         if ("preRangeHigh" in args) {
             if (temp > args.preRangeHigh) {
-                return null;
+                result.err = "value too high";
+                return result;
             }
         }
         
@@ -83,18 +97,23 @@ function parseNumber(tempStr, args) {
         // now do any range checking
         if ("rangeLow" in args) {
             if (temp < args.rangeLow) {
-                return null;
+                result.err = "value too low";
+                return result;
             }
         }
         if ("rangeHigh" in args) {
             if (temp > args.rangeHigh) {
-                return null;
+                result.err = "value too high";
+                return result;
             }
         }
-        return temp;
+        result.val = temp;
+        return result;
     } catch(e) {
         console.log("Exception thrown when parsing number string: '" + tempStr + "' ", e);
-        return null;
+        result.err = "can't parse number";
+        result.val = null;
+        return result;
     }
 }
 
@@ -102,8 +121,11 @@ function parseNumber(tempStr, args) {
 // formatObj is like this: {minTemp: "FtoC"}
 // formatObj is like this: {minTemp: {type: "FtoC", rangeLow: 0, rangeHigh: 100}}
 
+// returns an object with one or two properties
+// if the err property exists, then there was some sort of parsing error
+
 function parseDataObject(dataObj, formatObj) {
-    var output = {}, key, convertType, args, dataStr, result, fn;
+    var output = {}, err = {}, key, convertType, args, dataStr, result, fn, hadErr = false;
     for (key in formatObj) {
         args = formatObj[key];
         // shortcut to allow su to pass just a string
@@ -120,12 +142,19 @@ function parseDataObject(dataObj, formatObj) {
                 args.units = dataObj[args.units];
             }
             result = fn(dataStr, args);
-            if (result !== null) {
-                output[key] = result;
+            if (result.val !== null) {
+                output[key] = result.val;
+            } else {
+                hadErr = true;
+                err[key] = result.err;
             }
         }
     }
-    return output;
+    if (hadErr) {
+        return {output: output, err: err};
+    } else {
+        return {output: output};
+    }
 }
 
 

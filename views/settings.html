@@ -38,6 +38,7 @@
 	
 	.tempMsg {display: none;}
 	.tempMsg, .permMsg {color: red;}
+	.errMsg {color: red; padding: 0 10px;}
 
 </style>
 </head>
@@ -92,7 +93,7 @@
 		<button id="turnFanOn" name="action" value="on">Turn Fan On</button>
 		{{/if}}
 		<label> And Resume Auto After: </label>
-			<input name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}"> 
+			<input name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}" data-displayerrafter="fanControlReturnToAutoUnits"> 
 			<select name="fanControlReturnToAutoUnits" id="fanControlReturnToAutoUnits"><option value="minutes" selected="selected">Minutes</option><option value="hours">Hours</option><option value="days">Days</option></select>
 	</div>
 	<div class="centerRow">
@@ -128,20 +129,37 @@
 		$.cookie("temperatureUnits", this.value, { expires: 365 * 10, path: '/' });
 	}).filter("[value='" + temperatureUnits + "']").prop("checked", true);
 	
+	function showErrors(root, errObject) {
+		root = $(root);
+		// clean up old error messages
+		root.find(".errMsg").remove();
+		for (var name in errObject) {
+			var content = "<span class='errMsg'>" + errObject[name] + "</span>";
+			var item = root.find("[name='" + name + "']").first();
+			var displayAfter = item.data("displayerrafter");
+			if (displayAfter) {
+				item = root.find("[name='" + displayAfter + "']").first();
+			}
+			item.after(content);
+		}
+	}
+	
 	function showTempMsg(selector, msg, t) {
 		t = t || 10;
-		$(selector).find(".tempMsg").show().find(".msg").html(msg).end().delay(t * 1000).fadeOut(2000);
+		$(selector).find(".tempMsg").show().find(".msg").html(msg).end().stop(true).delay(t * 1000).fadeOut(2000);
 	}
 	
 	// hook up event handlers for the forms
 	$("#settings").submit(function(e) {
 		e.preventDefault();
+		var self = this;
 		$.post("/settings", $(this).serialize()).done(function(result) {
 			// show settings saved message here
 			if (result.status === "ok") {
 				showTempMsg("#settings", "Settings Saved Successfully");
 			} else {
-				showTempMsg("#settings", result.status);
+				showErrors(self, result.err);
+				showTempMsg("#settings", "Errors reported, settings not saved");
 			}
 		});
 	});
@@ -155,7 +173,8 @@
 		// get form data plus the action
 		var button = $(this);
 		var action = button.attr("value");
-		var data = button.closest("form").serialize() + "&action=" + action;
+		var form = button.closest("form");
+		var data = form.serialize() + "&action=" + action;
 		$.post("/onoff", data).done(function(result) {
 			if (result.status === "ok") {
 				showTempMsg("#on-off", "Fan set to " + action);
@@ -172,7 +191,8 @@
 				}
 				
 			} else {
-				showTempMsg("#on-off", result.status);
+				showErrors(form, result.err);
+				showTempMsg("#on-off", "Errors reported, settings not saved");
 			}
 		});
 	});

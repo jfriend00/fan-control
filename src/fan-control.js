@@ -151,8 +151,8 @@ app.route('/settings')
     // post can be either a form post or an ajax call, but it returns JSON either way
     var formatObj = {
         "minTemp": "FtoC",
-        "deltaTemp": {type: "FDeltaToC", rangeLow: 2},
-        "overshoot": {type: "FDeltaToC", rangeLow: 0.555555554},
+        "deltaTemp": {type: "FDeltaToC", rangeLow: 2, rangeLowMsg: "Temperature delta must be greater than 4&deg;F"},
+        "overshoot": {type: "FDeltaToC", rangeLow: 0.555555554, rangeLowMsg: "Must be greater than 1&deg;F"},
         "waitTime": "minToMs",
         "outsideAveragingTime": "minToMs"
     };
@@ -183,7 +183,7 @@ app.route('/settings')
 app.post('/onoff', urlencodedParser, function(req, res) {
     var formatObj = {
         // value must be more than 5 minutes, can be set to many days if desired
-        "fanControlReturnToAuto": {type: "duration", units: "fanControlReturnToAutoUnits", rangeLow: 1000 * 60 * 5}
+        "fanControlReturnToAuto": {type: "duration", units: "fanControlReturnToAutoUnits", rangeLow: 1000 * 60 * 5, rangeLowMsg: "Time to return to auto must be at least 5 minutes."}
     };
     
     var results = validate.parseDataObject(req.body, formatObj);

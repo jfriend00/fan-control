@@ -129,19 +129,30 @@
 		$.cookie("temperatureUnits", this.value, { expires: 365 * 10, path: '/' });
 	}).filter("[value='" + temperatureUnits + "']").prop("checked", true);
 	
+	function clearErrors(root) {
+		root = $(root);
+		root.find(".errMsg").remove();
+	}
+	
 	function showErrors(root, errObject) {
 		root = $(root);
 		// clean up old error messages
-		root.find(".errMsg").remove();
+		clearErrors(root);
 		for (var name in errObject) {
 			var content = "<span class='errMsg'>" + errObject[name] + "</span>";
 			var item = root.find("[name='" + name + "']").first();
-			var displayAfter = item.data("displayerrafter");
-			if (displayAfter) {
-				item = root.find("[name='" + displayAfter + "']").first();
-			}
+			var item = getErrAfter(root, item);
 			item.after(content);
 		}
+	}
+	
+	function getErrAfter(root, elem) {
+		elem = $(elem);
+		var displayAfter = elem.data("displayerrafter");
+		if (displayAfter) {
+			return root.find("[name='" + displayAfter + "']").first();
+		}
+		return elem;
 	}
 	
 	function showTempMsg(selector, msg, t) {
@@ -150,21 +161,37 @@
 	}
 	
 	// hook up event handlers for the forms
-	$("#settings").submit(function(e) {
+	var settingsForm = $("#settings");
+	settingsForm.find("input").on("input", function(e) {
+		var item = getErrAfter(settingsForm, this);
+		item.next(".errMsg").css("visibility", "hidden");
+	});
+	
+	settingsForm.submit(function(e) {
 		e.preventDefault();
 		var self = this;
 		$.post("/settings", $(this).serialize()).done(function(result) {
+			clearErrors(settingsForm);
 			// show settings saved message here
 			if (result.status === "ok") {
-				showTempMsg("#settings", "Settings Saved Successfully");
+				showTempMsg(settingsForm, "Settings Saved Successfully");
 			} else {
 				showErrors(self, result.err);
-				showTempMsg("#settings", "Errors reported, settings not saved");
+				showTempMsg(settingsForm, "Errors reported, settings not saved");
 			}
 		});
 	});
+	
 	// on/off/auto form
-	$("#on-off").submit(function(e) {
+	var onOffForm = $("#on-off");
+	
+	onOffForm.find("input").on("input", function(e) {
+		// if we modify this entry, then remove any error message next to it
+		var item = getErrAfter(onOffForm, this);
+		item.next(".errMsg").css("visibility", "hidden");
+	});
+	
+	onOffForm.submit(function(e) {
 		// prevent normal form submission
 		// require direct button click
 		e.preventDefault();
@@ -176,6 +203,7 @@
 		var form = button.closest("form");
 		var data = form.serialize() + "&action=" + action;
 		$.post("/onoff", data).done(function(result) {
+			clearErrors(form);
 			if (result.status === "ok") {
 				showTempMsg("#on-off", "Fan set to " + action);
 				$("#fanControlType").text(action);

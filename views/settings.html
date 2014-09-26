@@ -33,7 +33,7 @@
 	.myForm.center{text-align: center;}
 	.myForm .centerRow {margin: 1em 0;}
 	
-	#on-off input {width: 6em;}
+	#on-off input {width: 6em; margin-bottom: 10px;}
 	#on-off {margin-top: 20px; margin-bottom: 20px;}
 	
 	.tempMsg {display: none;}
@@ -54,22 +54,27 @@
 		<tr>
 			<td>Minimum Attic Temperature (&deg;F):</td>
 			<td><input name="minTemp" value="{{minTemp}}"></td>
+			<td class="errMsg"></td>
 		</tr>
 		<tr>
 			<td>Temperature Difference Trigger (&deg;F):</td>
 			<td><input name="deltaTemp" value="{{deltaTemp}}"></td>
+			<td class="errMsg"></td>
 		</tr>
 		<tr>
 			<td>Hysteresis Temperature Delta (&deg;F):</td>
 			<td><input name="overshoot" value="{{overshoot}}"></td>
+			<td class="errMsg"></td>
 		</tr>
 		<tr>
 			<td>Wait Time Before Restart (mins):</td>
 			<td><input name="waitTime" value="{{waitTime}}"></td>
+			<td class="errMsg"></td>
 		</tr>
 		<tr>
 			<td>Averaging Time Temperature Readings (mins):</td>
 			<td><input name="outsideAveragingTime" value="{{outsideAveragingTime}}"></td></tr>
+			<td class="errMsg"></td>
 		<tr class="fullRow buttonRow">
 			<td colspan="2"><button type="submit">Save</button></td>
 		</tr>
@@ -95,6 +100,7 @@
 		<label> And Resume Auto After: </label>
 			<input name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}" data-displayerrafter="fanControlReturnToAutoUnits"> 
 			<select name="fanControlReturnToAutoUnits" id="fanControlReturnToAutoUnits"><option value="minutes" selected="selected">Minutes</option><option value="hours">Hours</option><option value="days">Days</option></select>
+		<br><span class="errMsg"></span>
 	</div>
 	<div class="centerRow">
 		<button id="turnFanAuto" name="action" value="auto" 
@@ -131,28 +137,23 @@
 	
 	function clearErrors(root) {
 		root = $(root);
-		root.find(".errMsg").remove();
+		root.find(".errMsg").css("visibility", "hidden");
 	}
 	
-	function showErrors(root, errObject) {
+	function showErrors(root, errObject, parentSelector) {
 		root = $(root);
 		// clean up old error messages
 		clearErrors(root);
 		for (var name in errObject) {
-			var content = "<span class='errMsg'>" + errObject[name] + "</span>";
-			var item = root.find("[name='" + name + "']").first();
-			var item = getErrAfter(root, item);
-			item.after(content);
+			var content = errObject[name];
+			var obj = root.find("[name='" + name + "']").first();
+			getErrElem(obj, parentSelector).html(content).css("visibility", "visible");
 		}
 	}
 	
-	function getErrAfter(root, elem) {
-		elem = $(elem);
-		var displayAfter = elem.data("displayerrafter");
-		if (displayAfter) {
-			return root.find("[name='" + displayAfter + "']").first();
-		}
-		return elem;
+	function getErrElem(elem, parentSelector) {
+		parentSelector = parentSelector || "tr";
+		return $(elem).closest(parentSelector).find(".errMsg");
 	}
 	
 	function showTempMsg(selector, msg, t) {
@@ -163,8 +164,7 @@
 	// hook up event handlers for the forms
 	var settingsForm = $("#settings");
 	settingsForm.find("input").on("input", function(e) {
-		var item = getErrAfter(settingsForm, this);
-		item.next(".errMsg").css("visibility", "hidden");
+		getErrElem(this).css("visibility", "hidden");
 	});
 	
 	settingsForm.submit(function(e) {
@@ -187,8 +187,7 @@
 	
 	onOffForm.find("input").on("input", function(e) {
 		// if we modify this entry, then remove any error message next to it
-		var item = getErrAfter(onOffForm, this);
-		item.next(".errMsg").css("visibility", "hidden");
+		getErrElem(this, ".centerRow").css("visibility", "hidden");
 	});
 	
 	onOffForm.submit(function(e) {
@@ -219,7 +218,7 @@
 				}
 				
 			} else {
-				showErrors(form, result.err);
+				showErrors(form, result.err, ".centerRow");
 				showTempMsg("#on-off", "Errors reported, settings not saved");
 			}
 		});

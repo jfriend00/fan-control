@@ -31,6 +31,23 @@ var convertTypeMap = {
 };
 
 function parseNumber(tempStr, args) {
+
+    // pass something like "preRange", "Low"
+    // will look first for "preRangeLowMsg", then for "preRangeAllMsg"
+    function getMsg(base, suffix, defaultMsg) {
+        var result = {val: null};
+        result.err = args[base + suffix + "Msg"];
+        if (result.err) { return result; }
+        result.err = args[base + "AllMsg"];
+        if (result.err) { return result; }
+        if (defaultMsg) {
+            result.err = defaultMsg;
+        } else {
+            result.err = "Unable to parse number";
+        }        
+        return result;
+    }
+
     var result = {val: null};
     try {
         var temp, convert = args.type;
@@ -57,14 +74,12 @@ function parseNumber(tempStr, args) {
         // now do any range checking
         if ("preRangeLow" in args) {
             if (temp < args.preRangeLow) {
-                result.err = "value too low";
-                return result;
+                return getMsg("preRange", "Low", "value too low");
             }
         }
         if ("preRangeHigh" in args) {
             if (temp > args.preRangeHigh) {
-                result.err = "value too high";
-                return result;
+                return getMsg("preRange", "High", "value too high");
             }
         }
         
@@ -97,14 +112,12 @@ function parseNumber(tempStr, args) {
         // now do any range checking
         if ("rangeLow" in args) {
             if (temp < args.rangeLow) {
-                result.err = "value too low";
-                return result;
+                return getMsg("range", "Low", "value too low");
             }
         }
         if ("rangeHigh" in args) {
             if (temp > args.rangeHigh) {
-                result.err = "value too high";
-                return result;
+                return getMsg("range", "High", "value too high");
             }
         }
         result.val = temp;
@@ -119,7 +132,7 @@ function parseNumber(tempStr, args) {
 
 // dataObj is like this: {minTemp: "89.3"}
 // formatObj is like this: {minTemp: "FtoC"}
-// formatObj is like this: {minTemp: {type: "FtoC", rangeLow: 0, rangeHigh: 100}}
+// formatObj is like this: {minTemp: {type: "FtoC", rangeLow: 0, rangeHigh: 100, rangeAllMsg: "some text here", rangeLowMsg: "some text here", rangeHighMsg: "some text here"}}
 
 // returns an object with one or two properties
 // if the err property exists, then there was some sort of parsing error

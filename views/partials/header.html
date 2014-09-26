@@ -21,32 +21,32 @@
 		});
 	});
 	window.enableRawUpdates = function(callback) {
-		// join the raw room and listen for the raw event
-		
 		function join() {
-			// make sure we don't get double notifications in case of a reconnect
-			socket.off("temperatureUpdateRawMsg");
-			socket.on("temperatureUpdateRawMsg", callback);
+			// join the right chat room so we get the raw data sent to us
 			socket.emit("joinRoom", "raw");
 		}
+		
+		function onConnect() {
+			// Note: this will get called upon reconnect too after connection disruption (like server restart)
+			console.log("received connect event: " + new Date());
+			join();
+		}
+		
+		// register to receive the raw data
+		socket.on("temperatureUpdateRawMsg", callback);
+		socket.on('connect', onConnect);
 		
 		// if already connected, we can join now
 		if (socket.connected) {
 			console.log("already connected, sending join request");
 			join();
-		} else {
-			// otherwise, wait till connected, then join
-			console.log("register for connect event before join request");
-			socket.on('connect', function() {
-				console.log("received connect event: " + new Date());
-				join();
-			});
 		}
 	};
 	window.disableRawUpdates = function(callback) {
-		// stop listening and leave the room
+		// leave the room and stop listening
 		socket.emit("leaveRoom", "raw");
-		socket.off("temperatureUpdateRawMsg");
+		socket.off("temperatureUpdateRawMsg", callback);
+		socket.off('connect', onConnect);
 	};
 })();
 </script>

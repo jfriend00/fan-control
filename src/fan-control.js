@@ -146,6 +146,16 @@ app.route('/settings')
         fanState: data.fanOn,
         fanControl: config.fanControl
     };
+    
+    if (config.fanControl !== "auto" && config.fanControlReturnToAuto !== 0) {
+        // calc how many minutes from now
+        var minutesFromNow = (config.fanControlReturnToAuto - Date.now()) / (60 * 1000);
+        // make sure time is at least 5 minutes into the future
+        if (minutesFromNow > 5) {
+            tempData.fanControlReturnToAutoDefault = minutesFromNow.toFixed(2);
+        }
+    }
+    
     res.render('settings', tempData);
   }).post(urlencodedParser, function(req, res, next) {
     // post can be either a form post or an ajax call, but it returns JSON either way
@@ -192,7 +202,7 @@ app.post('/onoff', urlencodedParser, function(req, res) {
         return;
     }
     results = results.output;
-    var action = req.body.action;
+    var action = req.body.mode;
     if (results.fanControlReturnToAuto || action === "auto") {
         // calc the actual time in the future to return to auto
         var t = Date.now() + results.fanControlReturnToAuto;
@@ -215,7 +225,8 @@ app.post('/onoff', urlencodedParser, function(req, res) {
             status = 'Unknown action: must be "on", "off" or "auto"';
         }
         config.save();
-        res.json({status: status});
+        // return status and new fanControl setting
+        res.json({status: status, fanControl: config.fanControl});
     } else {
         res.json({status: "return to auto - invalid value"});
     }
@@ -499,10 +510,14 @@ process.on('exit', function(code) {
     
 }).on('SIGINT', function() {
     console.log("SIGINT signal received - exiting");
-    process.exit(2);
+    if (!data.getDataBlock()) {
+        process.exit(2);
+    }
 }).on('SIGTERM', function() {
     console.log("SIGTERM signal received - exiting");
-    process.exit(3);
+    if (!data.getDataBlock()) {
+        process.exit(3);
+    }
 });
 
 //returns {state: bool, reason: str}
@@ -692,6 +707,12 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
 // kill the server process at 4am each night
 // the forever daemon will restart it after we stop it
 (function() {
+    function exit() {
+        data.writeData(config.dataFilename, true);
+        console.log("daily 4am exit - forever daemon should restart us");
+        process.exit(1);
+    }
+    
     var exitTime = new Date();
     if (exitTime.getHours() < 4) {
         exitTime.setHours(4, 0, 0, 0);
@@ -701,11 +722,21 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
     // calc amount of time until restart
     var t = exitTime.getTime() - Date.now();
     setTimeout(function(){
-        // make sure data is written out
-        data.writeData(config.dataFilename, true);
+        // check a max of 20 times
+        var cntr = 20;
         
-        console.log("daily 4am exit - forever daemon should restart us");
-        process.exit(1);
+        function check() {
+            if (!data.getDataBlock() || cntr < 0) {
+                exit();
+            } else {
+                console.log("ran into dataBlock on 4am exit - waiting for block to clear");
+                --cntr;
+                // check again in 30 seconds
+                setTimeout(check, 30 * 1000);
+            }
+        }
+        
+        check();
     }, t);
     
     

@@ -25,16 +25,11 @@
 	.two_column .buttonRow td {padding-top: 15px;}
 	
 	/* specific formatting for the settings form and table */
-	#settings input {width: 6em;}
-	#settings {margin-top: 20px; margin-bottom: 20px;}
+	form input[type='text'] {width: 4em;}
+	form input[type='radio'] {margin-right: 3px;}
+	form label {padding-right: 10px;}
 	
-	.myForm .title {font-size: 160%; font-weight: bold; margin: .3em auto .5em; text-align: center;}
-	.myForm .subTitle {font-size: 120%; margin: 0 auto; text-align: center; margin-bottom: 1em;}
-	.myForm.center{text-align: center;}
-	.myForm .centerRow {margin: 1em 0;}
-	
-	#on-off input {width: 6em; margin-bottom: 10px;}
-	#on-off {margin-top: 20px; margin-bottom: 20px;}
+	#settings, #onoff {margin-top: 20px; margin-bottom: 20px;}
 	
 	.tempMsg {display: none;}
 	.tempMsg, .permMsg {color: red;}
@@ -49,31 +44,31 @@
 <table>
 	<tbody>
 		<tr class="fullRow">
-			<th class="title" colspan="2">Control Settings</th>
+			<th class="title" colspan="2">Auto Control Settings</th>
 		</tr>
 		<tr>
 			<td>Minimum Attic Temperature (&deg;F):</td>
-			<td><input name="minTemp" value="{{minTemp}}"></td>
+			<td><input type="text" name="minTemp" value="{{minTemp}}"></td>
 			<td class="errMsg"></td>
 		</tr>
 		<tr>
 			<td>Temperature Difference Trigger (&deg;F):</td>
-			<td><input name="deltaTemp" value="{{deltaTemp}}"></td>
+			<td><input type="text" name="deltaTemp" value="{{deltaTemp}}"></td>
 			<td class="errMsg"></td>
 		</tr>
 		<tr>
 			<td>Hysteresis Temperature Delta (&deg;F):</td>
-			<td><input name="overshoot" value="{{overshoot}}"></td>
+			<td><input type="text" name="overshoot" value="{{overshoot}}"></td>
 			<td class="errMsg"></td>
 		</tr>
 		<tr>
 			<td>Wait Time Before Restart (mins):</td>
-			<td><input name="waitTime" value="{{waitTime}}"></td>
+			<td><input type="text" name="waitTime" value="{{waitTime}}"></td>
 			<td class="errMsg"></td>
 		</tr>
 		<tr>
 			<td>Averaging Time Temperature Readings (mins):</td>
-			<td><input name="outsideAveragingTime" value="{{outsideAveragingTime}}"></td></tr>
+			<td><input type="text" name="outsideAveragingTime" value="{{outsideAveragingTime}}"></td></tr>
 			<td class="errMsg"></td>
 		<tr class="fullRow buttonRow">
 			<td colspan="2"><button type="submit">Save</button></td>
@@ -86,30 +81,42 @@
 </form>
 
 <hr>
-<form id="on-off" class="myForm center">
-	<div class="title">Fan Control</div>
-	<div class="subTitle">Control is currently set to: <span id="fanControlType">{{fanControl}}</span></div>
-	<div class="centerRow">
-		{{#if fanState}}
-		<button id="turnFanOff" name="action" value="off">Turn Fan Off</button>
-		<button id="turnFanOn" name="action" value="on" style="display: none;">Turn Fan On</button>
-		{{else}}
-		<button id="turnFanOff" name="action" value="off" style="display: none;">Turn Fan Off</button>
-		<button id="turnFanOn" name="action" value="on">Turn Fan On</button>
-		{{/if}}
-		<label> And Resume Auto After: </label>
-			<input name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}" data-displayerrafter="fanControlReturnToAutoUnits"> 
-			<select name="fanControlReturnToAutoUnits" id="fanControlReturnToAutoUnits"><option value="minutes" selected="selected">Minutes</option><option value="hours">Hours</option><option value="days">Days</option></select>
-		<br><span class="errMsg"></span>
-	</div>
-	<div class="centerRow">
-		<button id="turnFanAuto" name="action" value="auto" 
-			{{#ifCond fanControl "==" "auto"}} style="display: none;" {{/ifCond}}>
-			Set Fan to Auto</button>
-	</div>
-	<div class="tempMsg">
-		<div class="msg"></div>
-	</div>
+<form id="on-off" class="two_column" action="/onoff" method="post">
+<table>
+	<tbody>
+		<tr class="fullRow">
+			<th class="title" colspan="2">Manual Control</th>
+		</tr>
+		<tr>
+			<td>Control Mode:</td>
+			<td>
+				<label><input type="radio" name="mode" value="auto">Auto</label>
+				<label><input type="radio" name="mode" value="on">On</label>
+				<label><input type="radio" name="mode" value="off">Off</label>
+			</td>
+		</tr>
+		<tr>
+			<td>Resume Auto Mode After:</td>
+			<td>
+				<input type="text" name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}" data-err_display_id="fanControlReturnToAutoErr"> 
+				<select name="fanControlReturnToAutoUnits" id="fanControlReturnToAutoUnits">
+					<option value="minutes" selected="selected">Minutes</option>
+					<option value="hours">Hours</option>
+					<option value="days">Days</option>
+				</select>
+			</td>
+		</tr>
+		<tr class="fullRow" id="fanControlReturnToAutoErr">
+			<td colspan="2"><div class="errMsg"></div></td>
+		</tr>
+		<tr class="fullRow buttonRow">
+			<td colspan="2"><button type="submit">Save</button></td>
+		</tr>
+		<tr class="fullRow tempMsg">
+			<td colspan="2"><div class="msg"></div></td>
+		</tr>
+	</tbody>
+</table>
 </form>
 
 
@@ -140,20 +147,25 @@
 		root.find(".errMsg").css("visibility", "hidden");
 	}
 	
-	function showErrors(root, errObject, parentSelector) {
+	function showErrors(root, errObject) {
 		root = $(root);
 		// clean up old error messages
 		clearErrors(root);
 		for (var name in errObject) {
 			var content = errObject[name];
 			var obj = root.find("[name='" + name + "']").first();
-			getErrElem(obj, parentSelector).html(content).css("visibility", "visible");
+			getErrElem(obj).html(content).css("visibility", "visible");
 		}
 	}
 	
-	function getErrElem(elem, parentSelector) {
-		parentSelector = parentSelector || "tr";
-		return $(elem).closest(parentSelector).find(".errMsg");
+	function getErrElem(elem) {
+		elem = $(elem);
+		var alternateLocation = elem.data("err_display_id");
+		if (alternateLocation) {
+			return $("#" + alternateLocation).find(".errMsg");
+		}
+		// if no location specified, look elsewhere in our current row
+		return elem.closest("tr").find(".errMsg");
 	}
 	
 	function showTempMsg(selector, msg, t) {
@@ -182,44 +194,36 @@
 		});
 	});
 	
+	// this var set by server to initial state
+	var fanControl = "{{fanControl}}";
+	
+	function updateFanControlDisplay() {
+		$("#on-off input[name='mode'][value='" + fanControl + "'").prop("checked", true);
+	}
+	
+	// set initial value
+	updateFanControlDisplay();
+	
+	
 	// on/off/auto form
 	var onOffForm = $("#on-off");
-	
 	onOffForm.find("input").on("input", function(e) {
-		// if we modify this entry, then remove any error message next to it
-		getErrElem(this, ".centerRow").css("visibility", "hidden");
+		getErrElem(this).css("visibility", "hidden");
 	});
 	
 	onOffForm.submit(function(e) {
-		// prevent normal form submission
-		// require direct button click
 		e.preventDefault();
-	}).find("button").click(function(e) {
-		e.preventDefault();
-		// get form data plus the action
-		var button = $(this);
-		var action = button.attr("value");
-		var form = button.closest("form");
-		var data = form.serialize() + "&action=" + action;
-		$.post("/onoff", data).done(function(result) {
-			clearErrors(form);
+		var self = this;
+		$.post("/onoff", $(this).serialize()).done(function(result) {
+			clearErrors(onOffForm);
+			// show settings saved message here
 			if (result.status === "ok") {
-				showTempMsg("#on-off", "Fan set to " + action);
-				$("#fanControlType").text(action);
-				if (action === "auto") {
-					$("#turnFanAuto").hide();
-					// FIXME: we don't know whether to show the on or off buttons here
-				} else if (action === "off") {
-					$("#turnFanOff").hide();
-					$("#turnFanOn").show();
-				} else if (action === "on") {
-					$("#turnFanOn").hide();
-					$("#turnFanOff").show();
-				}
-				
+				fanControl = result.fanControl;
+				updateFanControlDisplay();
+				showTempMsg(onOffForm, "Settings Saved Successfully");
 			} else {
-				showErrors(form, result.err, ".centerRow");
-				showTempMsg("#on-off", "Errors reported, settings not saved");
+				showErrors(self, result.err);
+				showTempMsg(onOffForm, "Errors reported, settings not saved");
 			}
 		});
 	});

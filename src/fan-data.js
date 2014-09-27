@@ -25,6 +25,11 @@ var data = {
     // temperatures data format
     // time, atticTemp, outsideTemp
     // nnnnn, t1, t2
+    
+    getDataBlock: function() {
+        return this.dataBlock;
+    },
+    
     writeData: function(filename, sync) {
         // let everyone read the file
         var filePermissions = 438;
@@ -32,14 +37,11 @@ var data = {
         sync = sync || false;
 
         // can't write data out while it's already blocked for any reason
+        // FIXME: problem - what happens if we hit the dataBlock upon exit
         if (self.dataBlock) {
             console.log("hit data block");
             return;
         }
-        
-        // TODO - with async writes here, it is possible for the next manipulation of the
-        // temperature array to happen while we are in the middle of writing it to disk
-        // Need to figure out what to do about that
         
         // write new data format
         // each section starts with [title]

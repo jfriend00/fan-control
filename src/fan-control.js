@@ -115,25 +115,6 @@ app.get('/logs', function(req, res) {
     });
 });
 
-// add data to a data structure (usually a handlebars data structure)
-// from the hbsExtra flash key
-function getHbsItems(req, data) {
-    var extra = req.flash('hbsExtra'), obj, key;
-    if (extra) {
-        for (var i = 0; i < extra.length; i++) {
-            obj = extra[i];
-            for (key in obj) {
-                data[key] = obj[key];
-            }
-        }
-    }
-}
-
-// item is an object with key value pairs that will be added to the handlebars data structure
-function addHbsItem(req, item) {
-    req.flash('hbsExtra', item);
-}
-
 app.route('/settings')
   .get(function(req, res, next) {
     var tempData = {
@@ -421,6 +402,7 @@ var config = {
     
     configFilename: "/home/pi/fan-control.cfg",
     dataFilename: "/home/pi/fan-control-data.txt",
+    highLowFilename: "/home/pi/hi-lo.txt",
 
     // returns a promise
     save: function() {
@@ -491,7 +473,8 @@ data.init({
     temperatureRetentionMaxItems: config.temperatureRetentionMaxItems,
     temperatureRetentionDays: config.temperatureRetentionDays,
     fanEventRetentionDays: config.fanEventRetentionDays,
-    filename: config.dataFilename
+    filename: config.dataFilename,
+    highLowFilename: config.highLowFilename
 });        
 
 

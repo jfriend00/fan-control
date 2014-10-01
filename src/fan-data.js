@@ -438,7 +438,7 @@ var data = {
     
     // iterate on/off events
     eachEvent: function(fn) {
-        var retVal
+        var retVal;
         for (var i = 0, len = this.fanOnOffEvents.length; i < len; i++) {
             retVal = fn(this.fanOnOffEvents[i]);
             if (retVal === true) {
@@ -478,12 +478,12 @@ var data = {
     */
     
     init: function(config) {
-        // FIXME: writeTime defaulted to short time for debugging purposes
-        this.config.writeTime = config.writeTime || 15 * 1000;
+        this.config.writeTime = config.writeTime || (60 * 60 * 1000);
         this.config.temperatureRetentionMaxItems = config.temperatureRetentionMaxItems;
         this.config.temperatureRetentionDays = config.temperatureRetentionDays;
         this.config.fanEventRetentionDays = config.fanEventRetentionDays;
         this.config.filename = config.filename;
+        this.config.highLowFilename = config.highLowFilename;
         // read any prior data
         this.readData(this.config.filename);
         
@@ -492,6 +492,8 @@ var data = {
         this.dataWriteInterval = setInterval(function() {
             data.writeData(self.config.filename, false);
         }, this.config.writeTime);
+        
+        this.logger = new HighLowLogger(this.config.highLowFilename);
     }
 };
 
@@ -563,4 +565,153 @@ function getDayT(t) {
     date.setHours(0, 0, 0, 0);
     return date.getTime();
 }
+
+// high low file contains a series of lines of data like this:
+// dayT,high,low
+// 10-30-2014,23.2,18.7
+// The file is assumed to be in order and with only one hi-lo entry for each day
+// There can be missing days if not enough data was recorded for that day
+// The date is mid-night at start of the day, temperatures are in Celsius
+
+
+function HighLowLogger(fname) {
+    this.fname = fname;
+    this.lastDayBegin = 0;
+    this.initialize();
+}
+
+HighLowLogger.prototype = {
+    // open the file and read the last line to get the last date
+    // this is done synchronously (only called at startup)
+    initialize: function() {
+        var fd, bufLen = 1024;
+        try {
+            fd = fs.openSync(this.fname, "r");
+            var stats = fs.fstatSync(fd);
+            var buffer = new Buffer(bufLen);
+            // read last bytes of file
+            var bytesRead = fs.readSync(fd, buffer, 0, buffer.length, stats.size - buffer.length);
+            var data = buffer.slice(0, bytesRead).toString();
+            var lines = data.split("\n");
+            var lastLine = lines.pop().replace(/[\r\n]/g, "");
+            if (!lastLine) {
+                lastLine = lines.pop().replace(/[\r\n]/g, "");
+            }
+            // should have lastLine here
+            var data = this.parseLine(lastLine);
+            this.lastDayBegin = data.t;
+        } catch(e) {
+            if (e.code !== "ENOENT") {
+                console.log("Error initializing HighLowLogger", e);
+            }
+        } finally {
+            if (fd) {
+                fs.closeSync(fd);
+            }
+        }
+        
+        // check to update this data every couple hours
+        // though it will only have anything to do, the first time it's called after midnight
+        this.interval = setInterval(this.logNewDays.bind(this), 1000 * 60 * 60 * 2);
+    },
+    
+    // sample line
+    // 10-30-2014,23.2,18.7
+    parseLine: function(line) {
+        var data = {};
+        var items = line.split(",");
+        if (items < 3) {
+            return null;
+        }
+        var datePieces = items[0].split("-");
+        if (datePieces < 3) {
+            return null;
+        }
+        data.t = new Date(+datePieces[2], +datePieces[0] - 1, +datePieces[1]).getTime();
+        data.high = +items[1];
+        data.low = +items[2];
+        return data;
+    },
+    
+    checkForNewDays: function() {
+        var dayMs = 1000 * 60 * 60 * 24;
+        // a full day of data is considered to be within 30 mins of a full day
+        // we assume that if it was running in the beginning and end, it was running the full day
+        // this could be smarter, but probably doesn't need to be
+        var minDay = dayMs - (1000 * 60 * 30);
+        var newData = [], currentDayBegin, currentDayEnd, 
+            highTemp = 0, lowTemp = 1000, firstTime, lastTime, haveData;
+            
+        function flush() {
+            // only record full days
+            if (haveData && (lastTime - firstTime >= minDay)) {
+                newData.push({t: currentDayBegin, high: highTemp, low: lowTemp});
+            }
+        }
+        
+        function initDay(dayBegin) {
+            currentDayBegin = dayBegin;
+            currentDayEnd = dayBegin + dayMs;
+            haveData = false;
+        }
+        
+        // start looking for the next day after we already recorded
+        initDay(this.lastDayBegin + dayMs);
+        
+        data.eachTemperature(function(item) {
+            // only consider temperatures after lastDay
+            if (item.t >= currentDayBegin) {
+                if (item.t >= currentDayEnd) {
+                    flush();
+                    initDay(getDayT(item.t));
+                }
+                // it is in the current day we are collecting data for
+                // if we don't have any data yet, then just initialize everything
+                if (!haveData) {
+                    highTemp = item.outsideTemp;
+                    lowTemp = item.outsideTemp;
+                    firstTime = item.t;
+                    lastTime = item.t;
+                    haveData = true;
+                } else {
+                    highTemp = Math.max(item.outsideTemp, highTemp);
+                    lowTemp = Math.min(item.outsideTemp, lowTemp);
+                    lastTime = item.t;
+                }
+            }
+        });
+        flush();
+        return newData;
+    },
+    
+    logNewDays: function(callback) {
+        callback = callback || function() {};
+        var newData = this.checkForNewDays();
+        var data = "", item, self = this, dateStr, date;
+        if (newData.length) {
+            for (var i = 0; i < newData.length; i++) {
+                item = newData[i];
+                date = new Date(item.t);
+                dateStr = (date.getMonth() + 1) + "-" + date.getDate() + "-" + date.getFullYear();
+                data += dateStr + "," + item.high + "," + item.low + "\n";
+            }
+            console.log("new hi-lo data:\n", data);
+            fs.appendFile(this.fname, data, function(err) {
+                if (err) {
+                    callback(err);
+                } else {
+                    // remember the last day we've written
+                    self.lastDayBegin = newData[newData.length - 1].t;
+                }
+            });
+            
+        } else {
+            process.nextTick(function() {
+                // nothing to do so call the callback async with no error
+                callback(0);
+            });
+        }
+    }
+};
+
 

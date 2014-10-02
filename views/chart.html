@@ -1,6 +1,7 @@
 <html>
 <head>
 {{> common_head}}
+{{> jqueryui}}
 <style>
 	.time {width: 200px;}
 	.atticTemp, .outsideTemp {width: 200px;}
@@ -10,6 +11,8 @@
 	.even {background-color: #CCC;}
 	.spacer {clear: both;}
 	
+	/* jQueryUI tab overrides */
+	.ui-tabs-anchor {font-size: 80%; font-weight: bold;}
 </style>
 <script>
 // temperature data - array of arrays of the form [dateTime, atticTemp, outsideTemp]
@@ -18,18 +21,28 @@ var temperatureData = {{{temperatures}}};
 var onOffData = {{{onOffData}}};
 </script>
 <script type="text/javascript" src="http://www.google.com/jsapi"></script>
-<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
-<script src="//cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
-
 </head>
 <body>
 {{> header}}
 
-<div id="chart_div"></div>
-<div id="options">
-	<label>Show Number of Days</label><input id="numDays" /><br>
+<div id="tabs">
+	<ul id="tabsList">
+		<li><a href="#recentDays">Recent Days</a></li>
+		<li><a href="#highLow">High Low Temperatures</a></li>
+	</ul>
+	<div id="recentDays">
+		<div id="recentDaysChart" class="dynamicChart"></div>
+		<div id="options">
+			<label>Show Number of Days: </label><input id="numDays" /><br>
+		</div>
+	</div>
+	<div id="highLow">
+		<div id="highLowChart" class="dynamicChart"></div>
+	</div>
 </div>
 <script>
+
+$("#tabs").tabs();
 
 function now() {
     return new Date().getTime();
@@ -62,7 +75,7 @@ $("#numDays").on("change", function(e) {
 	resetReloadTimer();
 	clearTimeout(timer);
 	updateURL();
-	drawChartGetDays();
+	drawRecentChartGetDays();
 }).on("input", function(e) {
 	// short pause before processing
 	resetReloadTimer();
@@ -70,7 +83,7 @@ $("#numDays").on("change", function(e) {
 	timer = setTimeout(function() {
 		resetReloadTimer();
 		updateURL();
-		drawChartGetDays();
+		drawRecentChartGetDays();
 	}, 750);
 });
 
@@ -90,16 +103,19 @@ function toFahrenheit(c) {
     return Math.round(((c * 9 / 5) + 32) * 100) / 100;
 }
 
-var useFahrenheit = $.cookie("temperatureUnits") === "F";
-
-google.load("visualization", "1", {packages:["corechart"]});
-google.setOnLoadCallback(drawChartGetDays);
-
-function drawChartGetDays() {
-	drawChart(getDays());
+function calcChartHeight() {
+	var h = $(window).height() - 200;
+	return Math.min(h, 600);
 }
 
-function drawChart(days) {
+var useFahrenheit = $.cookie("temperatureUnits") === "F";
+
+function drawRecentChartGetDays() {
+	drawRecentChart(getDays());
+}
+
+function drawRecentChart(days) {
+	console.log("drawRecentChart");
 	var timeLimit;
 	
 	days = days || 0;
@@ -163,17 +179,23 @@ function drawChart(days) {
 		data.addRow([new Date(lastTime + 1), null, null, val]);
 	}
 
+	var chartDOM = $('#recentDaysChart');
 	var options = {
 	  title: 'Temperatures',
 	  //curveType: 'function',
-	  height: 500,
+	  height: calcChartHeight(),
+	  width: chartDOM.width(),
+	  chartArea: {width: '90%', height: '80%'},
 	  lineWidth: 1,
 	  legend: {position: 'bottom'}
 	};
 	
 	var gve = google.visualization.events;
 
-	var chart = new google.visualization.LineChart(document.getElementById('chart_div'));
+	var chart = new google.visualization.LineChart(chartDOM.get(0));
+	chart.draw(data, options);
+	chartDOM.data("objData").lastDrawnWidth = chartDOM.width();
+	
 	gve.addListener(chart, 'ready', function() {
 		gve.addListener(chart, 'select', function(a, b, c) {
 			var sel = chart.getSelection();
@@ -183,13 +205,16 @@ function drawChart(days) {
 		});
 	});
 	
-	chart.draw(data, options);
 }
-$(window).resize(drawChartGetDays);
+
+// initialize DOM data for recentDaysChart
+$('#recentDaysChart').data("objData", {draw: drawRecentChartGetDays});
 
 
 function makeURL(days) {
 	var url = window.location.href;
+	// remove hash
+	url = url.replace(/#.*$/, "");
 	if (days) {
 		if (window.location.search.length < 2) {
 			url = url.replace(/\?$/, "") ;
@@ -214,7 +239,7 @@ function makeURL(days) {
 		}
 		url = url.replace(daysRegex, "$1").replace("?&", "?");
 	}
-	return url;
+	return url + window.location.hash;
 }
 
 // reload the page every 10 minutes
@@ -230,6 +255,113 @@ function resetReloadTimer() {
 }
 
 resetReloadTimer();
+
+//---------------------------------
+// Hi Low Temperatures Chart
+//---------------------------------
+
+var hiLowData = [
+	[1411801200000,24.35,14.9],
+	[1411887600000,24.14,12.92],
+	[1411974000000,22.74,13.95],
+	[1412060400000,24.17,12.69]
+];
+
+function drawHiLowChart(days) {
+	console.log("drawHiLowChart");
+	var timeLimit;
+	
+	days = days || 0;
+	days = Math.max(days, 0);
+	if (days) {
+		timeLimit = now() - ((24 * 60 * 60 * 1000) * days);
+	} else {
+		timeLimit = 0;
+	}
+	var data = new google.visualization.DataTable();
+	data.addColumn('date', 'time', 'time');
+	data.addColumn('number', 'High', 'High');
+	data.addColumn('number', 'Low', 'Low');
+	var item, t1, t2;
+	
+	for (var i = 0, len = hiLowData.length; i < len; i++) {
+		item = hiLowData[i];
+		if (item[0] > timeLimit) {
+			if (!useFahrenheit) {
+				t1 = item[1];
+				t2 = item[2];
+			} else {
+				t1 = toFahrenheit(item[1]);
+				t2 = toFahrenheit(item[2]);
+			}
+			console.log(new Date(item[0]));
+			data.addRow([new Date(item[0]), t1, t2]);
+		}
+		
+	}
+
+	var chartDOM = $('#highLowChart');
+	var options = {
+	  title: 'High and Low Temperatures',
+	  //curveType: 'function',
+	  height: calcChartHeight(),
+	  width: chartDOM.width(),
+	  chartArea: {width: '90%', height: '80%'},
+	  lineWidth: 1,
+	  legend: {position: 'bottom'}
+	};
+	
+	var chart = new google.visualization.LineChart(chartDOM.get(0));
+	chart.draw(data, options);
+	chartDOM.data("objData").lastDrawnWidth = chartDOM.width();
+}
+
+// initialize DOM data for hiLowChart
+$('#highLowChart').data("objData", {draw: drawHiLowChart});
+
+google.load("visualization", "1", {packages:["corechart"]});
+google.setOnLoadCallback(drawActiveCharts);
+
+
+// handle tab changing and window resizing
+$("#tabs").on("tabsactivate", function(e, ui) {
+	// update hash value in the URL
+	history.pushState(null, null, "#" + ui.newPanel.attr("id"));
+	
+	// make sure new chart is drawn
+	var charts = ui.newPanel.find(".dynamicChart");
+	charts.each(function() {
+		var chart = $(this);
+		var chartData = chart.data("objData");
+		// only redraw chart if width has changed
+		if (chartData.lastDrawnWidth !== chart.width()) {
+			chartData.draw();
+		}
+	});
+});
+
+function getActiveTab() {
+	var active = $("#tabs").tabs("option", "active");
+	var tabsList = $("#tabsList a");
+	var chartSelector = tabsList.eq(active).attr("href");
+	return $(chartSelector);
+}
+
+function getActiveTabCharts() {
+	return getActiveTab().find(".dynamicChart");
+}
+
+function drawActiveCharts() {
+	getActiveTabCharts().each(function() {
+		var chart = $(this);
+		var data = chart.data("objData");
+		if (data.lastDrawnWidth !== chart.width()) {
+			data.draw();
+		}
+	});
+}
+
+$(window).resize(drawActiveCharts);
 
 </script>	
 </body>

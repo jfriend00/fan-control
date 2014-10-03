@@ -363,12 +363,14 @@ function drawHiLowChart(from, to) {
 function drawHiLowChartData(from, to) {
 	var timeLimitStart, timeLimitEnd;
 	
+	var lastPoint = hiLowData[hiLowData.length - 1][0];
+	
 	function calcTime(val, defaultVal) {
 		if (!val || val < 0) {
 			return defaultVal;
 		}
 		// return now - number of days passed in
-		return now() - ((24 * 60 * 60 * 1000) * val);
+		return lastPoint - ((24 * 60 * 60 * 1000) * val);
 	}
 	
 	timeLimitStart = calcTime(from, 0);
@@ -382,7 +384,7 @@ function drawHiLowChartData(from, to) {
 	
 	for (var i = 0, len = hiLowData.length; i < len; i++) {
 		item = hiLowData[i];
-		if (item[0] > timeLimitStart && item[0] < timeLimitEnd) {
+		if (item[0] >= timeLimitStart && item[0] <= timeLimitEnd) {
 			if (!useFahrenheit) {
 				t1 = item[1];
 				t2 = item[2];

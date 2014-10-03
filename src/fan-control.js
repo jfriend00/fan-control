@@ -244,6 +244,16 @@ app.get('/api/status', function(req, res, next) {
     res.json(tempData);
 });
 
+app.get('/api/highlow', function(req, res, next) {
+    data.getHighLowDataSmall(function(err, d) {
+        if (err) {
+            res.json(null);
+        } else {
+            res.json(d);
+        }
+    });    
+});
+
 var server = app.listen(8081, function() {
     console.log(new Date().toString() + ": fan-control server started on port 8081");
 });
@@ -390,7 +400,7 @@ var config = {
     overshoot: 0.55555555555555,                // ~1F
     waitTime: 10 * 60 * 1000,                   // 10 minutes (min time to wait from turn off before turning on)
     fanEventRetentionDays: (365 * 3) + 1,       // retain N days of fan on/off data
-    temperatureRetentionDays: 7,                // retain N days of temperature data (starting from next midnight transition)
+    temperatureRetentionDays: 14,                // retain N days of temperature data (starting from next midnight transition)
     temperatureRetentionMaxItems: 10000,        // max temp points to retain (to prevent runaway memory usage)
     dataSaveTime: 1000 * 60 * 60,               // save data to SD once per hour    
     fanPorts: [18, 16],                         // gpio ports to turn the fans on/off (this is Pi pin numbering, not Broadcom numbering)

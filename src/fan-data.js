@@ -1,7 +1,8 @@
 "use strict";
 var Promise = require('bluebird');
 var fs = Promise.promisifyAll(require('fs'));
-var lineReader = require('./line-reader.js');
+var lineReaderSync = require('./line-reader.js').sync;
+var readLineStream = require('./line-reader.js').readLineStream;
 
 initFS();
 
@@ -253,7 +254,7 @@ var data = {
                 dummy: function() {}
             };
             
-            var lr = new lineReader(filename);
+            var lr = new lineReaderSync(filename);
             while ((line = lr.readLineSync()) !== null) {
                 matches = line.match(sectionStart);
                 if (!matches) {
@@ -465,6 +466,12 @@ var data = {
         return JSON.stringify(temps);
     },
     
+    // this is async (data is read from disk)
+    // the callback is called and passed the entire data structure when done reading it
+    getHighLowDataSmall: function(fn) {
+        this.logger.getDataSmall(fn);
+    },
+    
     /* This is a sample iteration of temperature data 
     var item;
     for (var i = 0, len = data.getTemperatureLength(), i < len; i++) {
@@ -619,6 +626,9 @@ HighLowLogger.prototype = {
     // 10-30-2014,23.2,18.7
     parseLine: function(line) {
         var data = {};
+        if (!line) {
+            return null;
+        }
         var items = line.split(",");
         if (items < 3) {
             return null;
@@ -711,6 +721,24 @@ HighLowLogger.prototype = {
                 callback(0);
             });
         }
+    },
+    
+    getDataSmall: function(fn) {
+        var d = [], item, self = this;
+        var s = readLineStream(this.fname);
+        s.on("line", function(line) {
+            // parse line and put it in the array
+            item = self.parseLine(line);
+            if (item) {
+                d.push([item.t, item.high, item.low]);
+            }
+        });
+        s.on("done", function() {
+            fn(0, d);
+        });
+        s.on("error", function(err) {
+            fn(err);
+        });
     }
 };
 

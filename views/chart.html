@@ -11,6 +11,8 @@
 	.even {background-color: #CCC;}
 	.spacer {clear: both;}
 	
+	.toFromSlider, .chartOptions {margin-top: 15px;}
+	
 	/* jQueryUI tab overrides */
 	.ui-tabs-anchor {font-size: 80%; font-weight: bold;}
 </style>
@@ -21,6 +23,7 @@ var temperatureData = {{{temperatures}}};
 var onOffData = {{{onOffData}}};
 </script>
 <script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script type="text/javascript" src="/lib/parseurl.js"></script>
 </head>
 <body>
 {{> header}}
@@ -32,71 +35,162 @@ var onOffData = {{{onOffData}}};
 	</ul>
 	<div id="recentDays">
 		<div id="recentDaysChart" class="dynamicChart"></div>
-		<div id="options">
-			<label>Show Number of Days: </label><input id="numDays" /><br>
+		<div id="recentDaysOptions" class="chartOptions">
+			<label>From Number of Days Back: </label><input class="fromDays" id="fromRecentDays" /> <label>To Number of Days Back: </label><input class="toDays" id="toRecentDays" /><br>
+			<div class="toFromSlider" id="recentDaysSlider"></div>
 		</div>
 	</div>
 	<div id="highLow">
 		<div id="highLowChart" class="dynamicChart"></div>
+		<div id="highLowOptions" class="chartOptions">
+			<label>From Number of Days Back: </label><input class="fromDays" /> <label>To Number of Days Back: </label><input class="toDays" /><br>
+			<div class="toFromSlider"></div>
+		</div>
 	</div>
 </div>
 <script>
 
 $("#tabs").tabs();
-
 function now() {
     return new Date().getTime();
 }
 
-var daysRegex = /([?&])days=([.\d]+)/;
-var daysRegex2 = /([?&])days=([.\d]+)(&?)/;
+function roundToOneDecimal(num) {
+	return Math.round(num * 10) / 10;
+}
 
-(function() {
-	// initialize number of days from the URL before we draw the chart
-	if (window.location.search.length > 2) {
-		var matches = window.location.search.match(daysRegex);
-		if (matches) {
-			$("#numDays").val(matches[2]);
+function ChartController(id, urlArgBase, drawFn) {
+	this.typingTimer = null;
+	this.id = id;
+	this.drawFn = drawFn;
+	this.toQuery = "to" + urlArgBase;
+	this.fromQuery = "from" + urlArgBase;
+	this.topSelector = "#" + id;
+	
+	// save the controller on our chart object so it can be found via the DOM object
+	$(this.topSelector).find(".dynamicChart").data("chartController", this);
+}
+
+ChartController.prototype = {
+	init: function(delta, step) {
+		var self = this;
+		this.delta = delta;
+		this.step = step;
+		
+		// get parms out of the URL
+		var pageURL = parseURL(window.location.href);
+		var q = pageURL.queryObject;
+		
+		var top = this.getTop();
+		
+		// update DOM elements from URL query args
+		var from = q[this.fromQuery] || delta;
+		var to = q[this.toQuery] || 0;
+		this.setFields(from, to);
+		
+		// set up slider
+		top.find(".toFromSlider").slider({
+			range: true,
+			min: 0,
+			max: delta,
+			values: [delta - from, delta - to],
+			step: step,
+			slide: function(event, ui) {
+				var from = roundToOneDecimal(delta - ui.values[0]);
+				var to = roundToOneDecimal(delta - ui.values[1]);
+				self.setFields(from, to);
+			},
+			stop: function(event, ui) {
+				// process new slider position here
+				var from = roundToOneDecimal(delta - ui.values[0]);
+				var to = roundToOneDecimal(delta - ui.values[1]);
+				self.setFields(from, to);
+				self.draw();
+				self.updateURL();
+			}
+		});	
+		
+		// set up monitoring of typing fields
+		top.find(".fromDays, .toDays").on("change", function(e) {
+			resetReloadTimer();
+			clearTimeout(self.typingTimer);
+			self.typingTimer = null;
+			self.updateURL();
+			self.updateSlider();
+			self.draw();
+		}).on("input", function(e) {
+			resetReloadTimer();
+			clearTimeout(self.typingTimer);
+			self.typingTimer = setTimeout(function() {
+				self.updateURL();
+				self.updateSlider();
+				self.draw();
+			}, 750);
+		});
+	},
+	getTop: function() {
+		return $(this.topSelector);
+	},
+	setFields: function(from, to) {
+		var top = this.getTop();
+		top.find(".fromDays").val(from);
+		top.find(".toDays").val(to);
+	},
+	getFields: function() {
+		var top = this.getTop();
+		var from = +top.find(".fromDays").val() || 0;
+		var to = +top.find(".toDays").val() || 0;
+		return {from: from, to: to};
+	},
+	updateURL: function() {
+		var pageURL = parseURL(window.location.href);
+		var q = pageURL.queryObject;
+		delete q[this.toQuery];
+		delete q[this.fromQuery];
+		var t = this.getFields();
+		if (t.from && t.from !== this.delta) {
+			q[this.fromQuery] = t.from;
+		}
+		if (t.to) {
+			q[this.toQuery] = t.to;
+		}
+		if (window.history && window.history.replaceState) {
+			var newURL = pageURL.getURL();
+			if (newURL !== window.location.href) {
+				window.history.replaceState(null, window.title, newURL);
+			}
+		}
+	},
+	updateSlider: function() {
+		var d = this.getFields();
+		var top = this.getTop();
+		top.find(".toFromSlider").slider("values", [this.delta - (d.from || this.delta), this.delta - d.to]);
+	},
+	draw: function() {
+		var d = this.getFields();
+		this.drawFn(d.from, d.to);
+		// save width and height for later draw optimizations
+		this.lastWidth = $(window).width();
+		this.lastHeight = $(window).height();
+	},
+	drawIfSizeChanged: function() {
+		if (this.lastWidth !== $(window).width() || this.lastHeight !== $(window).height()) {
+			this.draw();
 		}
 	}
+};
+
+var recentDaysChartController = new ChartController("recentDays", "RecentDays", drawRecentChart);
+
+(function() {
+	// calc how far the data goes back
+	var t = temperatureData[0][0];
+	// calc delta rounded up to the nearest 0.1 days
+	// so the slider deals with event 10ths only
+	var delta = Math.ceil((now() - t) / (24 * 60 * 60 * 100)) / 10;
+	recentDaysChartController.init(delta, 0.1)
 })();
 
-function updateURL() {
-	if (window.history && window.history.replaceState) {
-		var newURL = makeURL(getDays());
-		if (newURL !== window.location.href) {
-			window.history.replaceState(null, window.title, newURL);
-		}	
-	}
-}
-
-var timer;
-$("#numDays").on("change", function(e) {
-	resetReloadTimer();
-	clearTimeout(timer);
-	updateURL();
-	drawRecentChartGetDays();
-}).on("input", function(e) {
-	// short pause before processing
-	resetReloadTimer();
-	clearTimeout(timer);
-	timer = setTimeout(function() {
-		resetReloadTimer();
-		updateURL();
-		drawRecentChartGetDays();
-	}, 750);
-});
-
-// parse days out of field
-function getDays() {
-	var dayStr = $("#numDays").val();
-	var matches = dayStr.match(/^\s*([.\d]+)/);
-	if (matches) {
-		return +matches[1];
-	} else {
-		return 0;
-	}
-}
 
 // convert degrees Celsius to Fahrenheit (rounded to 0.05)
 function toFahrenheit(c) {
@@ -110,21 +204,23 @@ function calcChartHeight() {
 
 var useFahrenheit = $.cookie("temperatureUnits") === "F";
 
-function drawRecentChartGetDays() {
-	drawRecentChart(getDays());
-}
-
-function drawRecentChart(days) {
-	console.log("drawRecentChart");
-	var timeLimit;
+// from and to are number of days back from now
+// if either is not passed, they default to all data in that direction
+function drawRecentChart(from, to) {
+	var timeLimitStart, timeLimitEnd;
 	
-	days = days || 0;
-	days = Math.max(days, 0);
-	if (days) {
-		timeLimit = now() - ((24 * 60 * 60 * 1000) * days);
-	} else {
-		timeLimit = 0;
+	function calcTime(val, defaultVal) {
+		if (!val || val < 0) {
+			return defaultVal;
+		}
+		// return now - number of days passed in
+		return now() - ((24 * 60 * 60 * 1000) * val);
 	}
+	
+	timeLimitStart = calcTime(from, 0);
+	timeLimitEnd = calcTime(to, now() + (365 * 24 * 60 * 60 * 1000));
+	
+	
 	var data = new google.visualization.DataTable();
 	data.addColumn('datetime', 'time', 'time');
 	data.addColumn('number', 'attic', 'attic');
@@ -134,7 +230,7 @@ function drawRecentChart(days) {
 	
 	for (var i = 0, len = temperatureData.length; i < len; i++) {
 		item = temperatureData[i];
-		if (item[0] > timeLimit) {
+		if (item[0] > timeLimitStart && item[0] < timeLimitEnd) {
 			if (!useFahrenheit) {
 				t1 = item[1];
 				t2 = item[2];
@@ -158,11 +254,11 @@ function drawRecentChart(days) {
 	for (var i = 0; i < onOffData.length; i++) {
 		item = onOffData[i];
 		val = item[1] === "on" ? onVal: offVal;
-		if (item[0] > timeLimit) {
+		if (item[0] > timeLimitStart && item[0] < timeLimitEnd) {
 			// fill in a starter point at the start of the interval if it's our first point and we're using a timeLimit
-			if (first && timeLimit) {
+			if (first && timeLimitStart) {
 				// this point goes from the timeLimit with the value of the first point in the range
-				data.addRow([new Date(timeLimit - 1), null, null, val]);
+				data.addRow([new Date(timeLimitStart - 1), null, null, val]);
 				first = false;
 			}
 			// if we are changing the value, then write a stop point for the previous value before we write our new value
@@ -208,39 +304,8 @@ function drawRecentChart(days) {
 }
 
 // initialize DOM data for recentDaysChart
-$('#recentDaysChart').data("objData", {draw: drawRecentChartGetDays});
+$('#recentDaysChart').data("objData", {draw: recentDaysChartController.draw.bind(recentDaysChartController)});
 
-
-function makeURL(days) {
-	var url = window.location.href;
-	// remove hash
-	url = url.replace(/#.*$/, "");
-	if (days) {
-		if (window.location.search.length < 2) {
-			url = url.replace(/\?$/, "") ;
-			url += "?days=" + days;
-		} else if (window.location.search.match(daysRegex)) {
-			url = url.replace(daysRegex, "$1days=" + days)
-		} else {
-			url += "&days=" + days;
-		}
-	} else {
-		// no days value specified so remove that from the URL entirely
-		var matches = url.match(daysRegex2);
-		if (matches) {
-			// if trailing &
-			if (matches[3]) {
-				// remove everything but first char
-				url = url.replace(daysRegex2, "$1");
-			} else {
-				// remove everything we matched
-				url = url.replace(daysRegex2, "");
-			}
-		}
-		url = url.replace(daysRegex, "$1").replace("?&", "?");
-	}
-	return url + window.location.hash;
-}
 
 // reload the page every 10 minutes
 // put chart settings into the URL so they get reloaded too
@@ -249,8 +314,7 @@ var reloadTimer;
 function resetReloadTimer() {
 	clearTimeout(reloadTimer);
 	reloadTimer = setTimeout(function() {
-		var url = makeURL(getDays());
-		window.location.replace(url);
+		window.location.replace(window.location.href);
 	}, 10 * 60 * 1000);
 }
 
@@ -260,24 +324,56 @@ resetReloadTimer();
 // Hi Low Temperatures Chart
 //---------------------------------
 
+/* 
 var hiLowData = [
 	[1411801200000,24.35,14.9],
 	[1411887600000,24.14,12.92],
 	[1411974000000,22.74,13.95],
 	[1412060400000,24.17,12.69]
 ];
+*/
 
-function drawHiLowChart(days) {
-	console.log("drawHiLowChart");
-	var timeLimit;
-	
-	days = days || 0;
-	days = Math.max(days, 0);
-	if (days) {
-		timeLimit = now() - ((24 * 60 * 60 * 1000) * days);
+// this chart is lazy initialized after we fetch the data 
+// and we only fetch the data when we first need to draw it (e.g. the tab is selected)
+var hiLowChartController = new ChartController("highLow", "HiLoDays", drawHiLowChart);
+
+var hiLowData;
+function drawHiLowChart(from, to) {
+	// if we already have the data, just draw it
+	if (hiLowData) {
+		drawHiLowChartData(from, to);
 	} else {
-		timeLimit = 0;
+		// otherwise, get the data from the server
+		$.get("/api/highlow").done(function(data) {
+			if (data) {
+				hiLowData = data;
+				// initialize the chart object
+				var todayBegin = new Date();
+				todayBegin.setHours(0, 0, 0, 0);
+				var delta = Math.round((todayBegin.getTime() - hiLowData[0][0]) / (24 * 60 * 60 * 1000));
+				hiLowChartController.init(delta, 1);
+				
+				// start the draw over so the from and to can be grabbed from the fields
+				hiLowChartController.draw();
+			}
+		});		
 	}
+}
+
+function drawHiLowChartData(from, to) {
+	var timeLimitStart, timeLimitEnd;
+	
+	function calcTime(val, defaultVal) {
+		if (!val || val < 0) {
+			return defaultVal;
+		}
+		// return now - number of days passed in
+		return now() - ((24 * 60 * 60 * 1000) * val);
+	}
+	
+	timeLimitStart = calcTime(from, 0);
+	timeLimitEnd = calcTime(to, now() + (365 * 24 * 60 * 60 * 1000));
+	
 	var data = new google.visualization.DataTable();
 	data.addColumn('date', 'time', 'time');
 	data.addColumn('number', 'High', 'High');
@@ -286,7 +382,7 @@ function drawHiLowChart(days) {
 	
 	for (var i = 0, len = hiLowData.length; i < len; i++) {
 		item = hiLowData[i];
-		if (item[0] > timeLimit) {
+		if (item[0] > timeLimitStart && item[0] < timeLimitEnd) {
 			if (!useFahrenheit) {
 				t1 = item[1];
 				t2 = item[2];
@@ -294,7 +390,6 @@ function drawHiLowChart(days) {
 				t1 = toFahrenheit(item[1]);
 				t2 = toFahrenheit(item[2]);
 			}
-			console.log(new Date(item[0]));
 			data.addRow([new Date(item[0]), t1, t2]);
 		}
 		
@@ -313,7 +408,6 @@ function drawHiLowChart(days) {
 	
 	var chart = new google.visualization.LineChart(chartDOM.get(0));
 	chart.draw(data, options);
-	chartDOM.data("objData").lastDrawnWidth = chartDOM.width();
 }
 
 // initialize DOM data for hiLowChart
@@ -331,12 +425,7 @@ $("#tabs").on("tabsactivate", function(e, ui) {
 	// make sure new chart is drawn
 	var charts = ui.newPanel.find(".dynamicChart");
 	charts.each(function() {
-		var chart = $(this);
-		var chartData = chart.data("objData");
-		// only redraw chart if width has changed
-		if (chartData.lastDrawnWidth !== chart.width()) {
-			chartData.draw();
-		}
+		$(this).data("chartController").drawIfSizeChanged();
 	});
 });
 
@@ -353,11 +442,7 @@ function getActiveTabCharts() {
 
 function drawActiveCharts() {
 	getActiveTabCharts().each(function() {
-		var chart = $(this);
-		var data = chart.data("objData");
-		if (data.lastDrawnWidth !== chart.width()) {
-			data.draw();
-		}
+		$(this).data("chartController").drawIfSizeChanged();
 	});
 }
 

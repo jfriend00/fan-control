@@ -15,6 +15,9 @@
 	
 	/* jQueryUI tab overrides */
 	.ui-tabs-anchor {font-size: 80%; font-weight: bold;}
+	
+	/* default heights to avoid flashing before height is calculated */
+	#recentDaysChart, #highLowChart {height: 600px;}
 </style>
 <script>
 // temperature data - array of arrays of the form [dateTime, atticTemp, outsideTemp]
@@ -49,6 +52,16 @@ var onOffData = {{{onOffData}}};
 	</div>
 </div>
 <script>
+
+function calcChartHeight() {
+	var h = $(window).height() - 200;
+	return Math.min(h, 600);
+}
+
+(function() {
+	var h = calcChartHeight();
+	$("#recentDaysChart, #highLowChart").height(h);
+})();
 
 $("#tabs").tabs();
 function now() {
@@ -197,17 +210,13 @@ function toFahrenheit(c) {
     return Math.round(((c * 9 / 5) + 32) * 100) / 100;
 }
 
-function calcChartHeight() {
-	var h = $(window).height() - 200;
-	return Math.min(h, 600);
-}
-
 var useFahrenheit = $.cookie("temperatureUnits") === "F";
 
 // from and to are number of days back from now
 // if either is not passed, they default to all data in that direction
 function drawRecentChart(from, to) {
 	var timeLimitStart, timeLimitEnd;
+	
 	
 	function calcTime(val, defaultVal) {
 		if (!val || val < 0) {
@@ -290,7 +299,6 @@ function drawRecentChart(from, to) {
 
 	var chart = new google.visualization.LineChart(chartDOM.get(0));
 	chart.draw(data, options);
-	chartDOM.data("objData").lastDrawnWidth = chartDOM.width();
 	
 	gve.addListener(chart, 'ready', function() {
 		gve.addListener(chart, 'select', function(a, b, c) {
@@ -302,10 +310,6 @@ function drawRecentChart(from, to) {
 	});
 	
 }
-
-// initialize DOM data for recentDaysChart
-$('#recentDaysChart').data("objData", {draw: recentDaysChartController.draw.bind(recentDaysChartController)});
-
 
 // reload the page every 10 minutes
 // put chart settings into the URL so they get reloaded too
@@ -398,6 +402,7 @@ function drawHiLowChartData(from, to) {
 	}
 
 	var chartDOM = $('#highLowChart');
+	
 	var options = {
 	  title: 'High and Low Temperatures',
 	  //curveType: 'function',
@@ -411,9 +416,6 @@ function drawHiLowChartData(from, to) {
 	var chart = new google.visualization.LineChart(chartDOM.get(0));
 	chart.draw(data, options);
 }
-
-// initialize DOM data for hiLowChart
-$('#highLowChart').data("objData", {draw: drawHiLowChart});
 
 google.load("visualization", "1", {packages:["corechart"]});
 google.setOnLoadCallback(drawActiveCharts);

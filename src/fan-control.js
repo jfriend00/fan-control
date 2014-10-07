@@ -409,6 +409,7 @@ var config = {
     fanControlReturnToAuto: 0,                  // time that fan control should return to auto
                                                 // 0 is never return, otherwise it's a time when control should go back to auto
     outsideAveragingTime: 3 * 60 * 1000,        // 3 minutes - time (ms) to average the temperatures over
+    minRecordDiff: 0.2,                         // min temp difference before recording the data
     
     configFilename: "/home/pi/fan-control.cfg",
     dataFilename: "/home/pi/fan-control-data.txt",
@@ -652,7 +653,7 @@ var atticAverager = new timeAverager(config.outsideAveragingTime);
 
 function poll() {
     Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).spread(function(atticTempRaw, outsideTempRaw) {
-        var minDiff = 0.06, recordTemp = true, atticTemp, outsideTemp;
+        var minDiff = config.minRecordDiff, recordTemp = true, atticTemp, outsideTemp;
         
         // add in calibration factor
         atticTempRaw += config.thermometerInfo.atticCalibration;
@@ -673,7 +674,7 @@ function poll() {
         }
         if (recordTemp) {
             data.addTemperature(atticTemp, outsideTemp);
-            // let any listeners now, we have a newly recorded temperature
+            // let any listeners know we have a newly recorded temperature
             socketListeners.broadcastTemperatureUpdate(atticTemp, outsideTemp);
         }
 

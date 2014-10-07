@@ -235,7 +235,7 @@ function drawRecentChart(from, to) {
 	data.addColumn('number', 'attic', 'attic');
 	data.addColumn('number', 'outside', 'outside');
 	data.addColumn('number', 'on', 'on');
-	var item, max = 0, min = 1000, t1, t2, lastTime;
+	var item, max = 0, min = 1000, t1, t2, lastTime, firstTime;
 	
 	for (var i = 0, len = temperatureData.length; i < len; i++) {
 		item = temperatureData[i];
@@ -252,36 +252,61 @@ function drawRecentChart(from, to) {
 			min = Math.min(min, t1, t2);
 			data.addRow([new Date(item[0]), t1, t2, null]);
 			lastTime = item[0];
+			if (!firstTime) {
+				firstTime = item[0];
+			}
 		}
 		
 	}
+	// set our scale values based on previously shown points so it fits in the same chart well
 	var onVal = Math.round(max + 1);
 	var offVal = Math.round(min - 1);
-	var lastVal, first = true, val;
+	
+	// current state in the log so when we hit timeLimitStart, we know what state to start with
+	var trackingState = offVal;
+	
+	// keeps track of whether we've shown any points yet
+	var anyVisible = false;
+	
+	// keep track of whether we've inserted a stop point at the timeLimitEnd
+	var doneTimeLimitEnd = false;
+	
+	// put the actual end of our graph into timeLimitEnd
+	timeLimitEnd = Math.min(lastTime, timeLimitEnd);
 	
 	// now add the on/off data
 	for (var i = 0; i < onOffData.length; i++) {
+		// get current item
 		item = onOffData[i];
+		// get current value
 		val = item[1] === "on" ? onVal: offVal;
-		if (item[0] > timeLimitStart && item[0] < timeLimitEnd) {
-			// fill in a starter point at the start of the interval if it's our first point and we're using a timeLimit
-			if (first && timeLimitStart) {
-				// this point goes from the timeLimit with the value of the first point in the range
-				data.addRow([new Date(timeLimitStart - 1), null, null, val]);
-				first = false;
+		
+		// if we're in the range
+		if (item[0] > timeLimitStart && item[0] <= timeLimitEnd) {
+			// if we haven't had any visible points yet, but we're now in range
+			// add a point at larger of firstTime and timeLimitStart to set the initial
+			// state to trackingState (whatever we must have been when we crossed that time boundary)
+			if (!anyVisible) {
+				t1 = Math.max(firstTime, timeLimitStart);
+				data.addRow([new Date(t1), null, null, trackingState]);
+				anyVisible = true;
 			}
-			// if we are changing the value, then write a stop point for the previous value before we write our new value
-			if (lastVal && item[1] !== lastVal) {
-			    // opposite value for our stop point
-				data.addRow([new Date(item[0] - 1), null, null, item[1] === "on" ? offVal: onVal]);
+			// so here we're guaranteed to already have a point at trackingState
+			// if our new state is different than trackingState, then add a stop point for trackingState
+			// and a start point for our new state
+			if (val !== trackingState) {
+				// add stop point at our current time
+				data.addRow([new Date(item[0]), null, null, trackingState]);
+				// now switch to new state
+				data.addRow([new Date(item[0]), null, null, val]);
 			}
-			data.addRow([new Date(item[0]), null, null, val]);
-			lastVal = item[1];
+		} else if (item[0] > timeLimitEnd && !doneTimeLimitEnd) {
+			// if we're past the timeLimit and haven't put a stop point there, add one
+			data.addRow([new Date(timeLimitEnd), null, null, trackingState]);
+			doneTimeLimitEnd = true;
 		}
-	}
-	if (lastTime) {
-		// extend the last on/off event until the end
-		data.addRow([new Date(lastTime + 1), null, null, val]);
+		// this is our current tracking state regardless of whether we've shown the point or not
+		trackingState = val;
 	}
 
 	var chartDOM = $('#recentDaysChart');

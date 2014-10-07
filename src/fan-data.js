@@ -705,7 +705,6 @@ HighLowLogger.prototype = {
                 dateStr = (date.getMonth() + 1) + "-" + date.getDate() + "-" + date.getFullYear();
                 data += dateStr + "," + item.high + "," + item.low + "\n";
             }
-            console.log("new hi-lo data:\n", data);
             fs.appendFile(this.fname, data, function(err) {
                 if (err) {
                     callback(err);

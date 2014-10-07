@@ -308,6 +308,11 @@ function drawRecentChart(from, to) {
 		// this is our current tracking state regardless of whether we've shown the point or not
 		trackingState = val;
 	}
+	// if we haven't put in a point at the end
+	// put one in at the last value we had
+	if (!doneTimeLimitEnd) {
+		data.addRow([new Date(timeLimitEnd), null, null, trackingState]);
+	}
 
 	var chartDOM = $('#recentDaysChart');
 	var options = {

@@ -319,32 +319,32 @@ var data = {
                 }
             }
 
+            // remove any items that are beyond the number of days we want to keep
             // assumes each array element is an object with a .t property
-            // FIXME: this needs to process the array from backwards to frontwards
-            function truncateToNumberOfDays(array, n) {
-                // keep track of each unique day of data we encounter
-                var days = [];
-                for (var i = 0, len = array.length; i < len; i++) {
-                    var day = getDayT(array[i].t);
-                    // if day is not already in our array and we've reach the max number of days
-                    // allow one extra day for the unfinished day today so we always have
-                    // n of full older days
-                    if (days.indexOf(day) === -1) { 
-                        if (days.length > n) {
-                            // then truncate the array and be done
-                            array.length = i;
-                            return;
-                        } else {
-                            days.push(day);
+            // and that the array is in order by time            
+            function keepNumDays(array, nDays) {
+                // get start of today
+                var todayBegin = new Date().setHours(0, 0, 0, 0);
+                // calc start of last day we want to keep
+                var ageBegin = todayBegin - (nDays * 24 * 60 * 60 * 1000);
+                
+                for (var i = 0, len = temps.length; i < len; i++) {
+                    // if we have a temp larger than ageBegin, then truncate at previous temperature
+                    if (array[i].t > ageBegin) {
+                        if (i !== 0) {
+                            // remove i elements that came before this one
+                            console.log("ageData() removing " + i + " elements");
+                            array.splice(0, i);
                         }
+                        break;
                     }
                 }
-            
             }
 
-            // truncate arrays to max number of days of data
-            // truncateToNumberOfDays(temps, this.config.temperatureRetentionDays);
-            // truncateToNumberOfDays(this.fanOnOffEvents, this.config.fanEventRetentionDays);
+            // trim both the temperatures array and the fanOnOffEvents array
+            keepNumDays(temps, this.config.temperatureRetentionDays);
+            keepNumDays(this.fanOnOffEvents, this.config.fanEventRetentionDays);
+          
         }
         
         if (this.dataBlock) {

@@ -676,14 +676,14 @@ function poll() {
             data.addTemperature(atticTemp, outsideTemp);
             // let any listeners know we have a newly recorded temperature
             socketListeners.broadcastTemperatureUpdate(atticTemp, outsideTemp);
+            // age any data that needs to be thrown away
+            data.ageData();
         }
 
         // make sure fan setting is set appropriately
         var result = checkFanAction(atticTemp, outsideTemp);
         setFan(result.state, result.reason);
         
-        // age any data that needs to be thrown away
-        data.ageData();
         /*
         console.log(new Date().toString().replace(/\s*GMT.*$/, "") + ": attic temp = " + atticTemp + 
             ", outside temp = " + outsideTemp + ", len=" + data.getTemperatureLength() + 

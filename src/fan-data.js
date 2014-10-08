@@ -38,9 +38,8 @@ var data = {
         sync = sync || false;
 
         // can't write data out while it's already blocked for any reason
-        // FIXME: problem - what happens if we hit the dataBlock upon exit
         if (self.dataBlock) {
-            console.log("hit data block");
+            console.log("hit data block on writeData() - skipping the write");
             return;
         }
         

@@ -83,6 +83,12 @@ hbs.registerHelper('ifCond', function (v1, operator, v2, options) {
 
 // define page routes
 app.get('/', function(req, res) {
+    // ideas for this page
+    // - Some average temperature data
+    // - yesterday's high and low outside and attic
+    // - Some data about how much the fan has been on or not on when it would have been
+    // - Some health check data (uptime)
+
     var item = data.getTemperatureItem(-1);
     var tempData = {
         tAtticC: item.atticTemp, 

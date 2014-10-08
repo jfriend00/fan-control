@@ -39,19 +39,24 @@ var onOffData = {{{onOffData}}};
 	<div id="recentDays">
 		<div id="recentDaysChart" class="dynamicChart"></div>
 		<div id="recentDaysOptions" class="chartOptions">
-			<label>From Number of Days Back: </label><input class="fromDays" id="fromRecentDays" /> <label>To Number of Days Back: </label><input class="toDays" id="toRecentDays" /><br>
+			<label>From Number of Days Back: </label><input size="5" class="fromDays" id="fromRecentDays" /> <label>To Number of Days Back: </label><input size="5" class="toDays" id="toRecentDays" /><br>
 			<div class="toFromSlider" id="recentDaysSlider"></div>
 		</div>
 	</div>
 	<div id="highLow">
 		<div id="highLowChart" class="dynamicChart"></div>
 		<div id="highLowOptions" class="chartOptions">
-			<label>From Number of Days Back: </label><input class="fromDays" /> <label>To Number of Days Back: </label><input class="toDays" /><br>
+			<label>From Number of Days Back: </label><input size="5" class="fromDays" /> <label>To Number of Days Back: </label><input size="5" class="toDays" /><br>
 			<div class="toFromSlider"></div>
 		</div>
 	</div>
 </div>
 <script>
+
+// check if the Google API loaded properly
+if (!window.google) {
+	$("#highLowChart, #recentDaysChart").html("Google API did not load correctly, perhaps being blocked by privacy controls.");
+}
 
 function calcChartHeight() {
 	var h = $(window).height() - 200;
@@ -270,9 +275,15 @@ function drawRecentChart(from, to) {
 	
 	// keep track of whether we've inserted a stop point at the timeLimitEnd
 	var doneTimeLimitEnd = false;
-	
-	// put the actual end of our graph into timeLimitEnd
-	timeLimitEnd = Math.min(lastTime, timeLimitEnd);
+
+	// if we have no restrictions on the end, then go all the way until now
+	// to get all events, both fan and temperature
+	if (!to) {
+		timeLimitEnd = now();
+	} else {
+		// put the actual end of our graph into timeLimitEnd
+		timeLimitEnd = Math.min(lastTime, timeLimitEnd);
+	}
 	
 	// now add the on/off data
 	for (var i = 0; i < onOffData.length; i++) {

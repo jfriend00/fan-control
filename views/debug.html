@@ -36,8 +36,8 @@
 <script>
 	var rowCntr = 0;
 	enableRawUpdates(function(data) {
-		var header = $("#liveFeedHeader")
-		var container = $("#liveFeedContainer")
+		var header = $("#liveFeedHeader");
+		var container = $("#liveFeedContainer");
 		var newRow = header.clone();
 		newRow.removeAttr("id");
 		newRow.addClass(rowCntr++ % 2 ? "odd" : "even");

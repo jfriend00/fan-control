@@ -1,11 +1,43 @@
 <html>
 <head>
 {{> common_head}}
+
+<style>
+	#data {margin: 25px auto;}
+	
+	/* generic two column form table styles */
+	.two_column table {margin: 0 auto;}
+	.two_column td {padding: 5px 0;}
+	.two_column td:first-child {text-align: right; padding-right: 5px;}
+	/* full row formatting */
+	.two_column .fullRow td {padding: 5px 0; text-align: center;}
+	.two_column .title {font-size: 160%; padding-bottom: 15px;}
+	.two_column .buttonRow td {padding-top: 15px;}
+	
+	.title {font-size: 160%; padding-bottom: 15px; margin: 0 auto; text-align: center;}
+	#restarts {width: 400px; margin: 10px auto;}
+	#restarts div {margin-top: 5px; margin-bottom: 5px; text-align: center;}
+	
+	
+</style>
 </head>
 <body>
 	{{> header}}
-	<p>Current Temperatures:</p>
-	<p>Attic Temp: {{tAtticC}}C ({{tAtticF}}F)</p>
-	<p>Outside Temp: {{tOutsideC}}C ({{tOutsideF}}F)</p>
+	<table id="data" class="two_column">
+		<tbody>
+			<tr><td colspan="2" class="title">Hardware and OS Information</td></tr>
+			<tr><td>Free Memory: </td><td>{{freeMem}}</td></tr>
+			<tr><td>Total Memory: </td><td>{{totalMem}}</td></tr>
+			<tr><td>OS Uptime: </td><td>{{uptime}} days</td></tr>
+			<tr><td></td><td></td></tr>
+		</tbody>
+	</table>
+	
+	<div id="restarts">
+		<div class="title" >Unexpected server restarts</div>
+		{{#each restarts}}
+			<div>{{this}}</div>
+		{{/each}}
+	</div>
 </body>
 </html>

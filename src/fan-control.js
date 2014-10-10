@@ -9,6 +9,9 @@ var bodyParser = require('body-parser');
 var validate = require('./validate');
 var timeAverager = require('./averager').timeAverager;
 var session = require('express-session');
+var readLines = require("./line-reader").readLines;
+var os = require('os');
+var heapdump = require('heapdump');
  
 var data = require('./fan-data.js');
 
@@ -88,7 +91,40 @@ app.get('/', function(req, res) {
     // - yesterday's high and low outside and attic
     // - Some data about how much the fan has been on or not on when it would have been
     // - Some health check data (uptime)
-
+    // - free memory
+    // - free storage
+    
+    var templateData = {
+        totalMem: addCommas(os.totalmem()),
+        freeMem: addCommas(os.freemem()),
+        uptime: (os.uptime() / (60 * 60 * 24)).toFixed(1),      // days of uptime
+        restarts: []
+    };
+    
+    var re = /(^.*?Z):\s+fan-control server started on port/;
+    
+    var p1 = readLines("/home/pi/logs/fan-control.log", function(line, arg) {
+        var matches, d;
+        matches = line.match(re);
+        if (matches) {
+            d = new Date(matches[1]);
+            // only record results that are not right around 4am
+            if (d.getHours() !== 4 || d.getMinutes() > 5) {
+                templateData.restarts.push(d.toString());
+            }
+        }
+        return arg;
+    }, []).then(function(serverStarts) {
+        
+    }).catch(function(err) {
+        console.log("Error reading log file", err);
+    });
+    
+    Promise.all([p1]).then(function() {
+        res.render('index', templateData);
+    });
+    
+/* 
     var item = data.getTemperatureItem(-1);
     var tempData = {
         tAtticC: item.atticTemp, 
@@ -98,6 +134,7 @@ app.get('/', function(req, res) {
         units: req.cookies.temperatureUnits
     };
     res.render('index', tempData);    
+*/    
 });
 
 // display log files
@@ -222,7 +259,7 @@ app.post('/onoff', urlencodedParser, function(req, res) {
 app.get('/debug', function(req, res) {
     var tempData = {
         // last hour's worth of data
-        temperatures: data.temperatures.slice(-6 * 60),
+        temperatures: data.temperatures.slice(-100),
         totalTemps: data.temperatures.length,
         units: req.cookies.temperatureUnits
     };
@@ -261,7 +298,7 @@ app.get('/api/highlow', function(req, res, next) {
 });
 
 var server = app.listen(8081, function() {
-    console.log(new Date().toString() + ": fan-control server started on port 8081");
+    console.log(new Date().toISOString() + ": fan-control server started on port 8081");
 });
 
 // web sockets handler
@@ -768,3 +805,24 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
     }, 3000);
 })();
 */
+
+function addCommas(str) {
+    var parts = (str + "").split("."),
+        main = parts[0],
+        len = main.length,
+        output = "",
+        i = len - 1;
+    
+    while(i >= 0) {
+        output = main.charAt(i) + output;
+        if ((len - i) % 3 === 0 && i > 0) {
+            output = "," + output;
+        }
+        --i;
+    }
+    // put decimal part back
+    if (parts.length > 1) {
+        output += "." + parts[1];
+    }
+    return output;
+}

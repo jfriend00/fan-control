@@ -1,6 +1,6 @@
 "use strict";
 var fs = require('fs');
-
+var Promise = require('bluebird');
 
 // readSize is optional (defaults to 1024)
 // throws if file can't be opened or read
@@ -86,7 +86,37 @@ function createReadLineStream(fname, options) {
     return self;    
 }
 
-module.exports = {sync: LineByLineSync, readLineStream: createReadLineStream};
+// async function to read all lines in a file
+// passes each line to the callback
+// initial arg is passed to the callback and accumulated from return value of callback (like Array.reduce)
+// returns promise
+// options and arg are optional arguments, but if you want options, you must pass arg
+function readLines(fname, fn, arg, options) {
+    return new Promise(function(resolve, reject) {
+        var result = arg;
+        var s = createReadLineStream(fname, options);
+        s.on("line", function(line) {
+            try {
+                result = fn(line, result);
+            } catch(e) {
+                s.close();
+                reject(e);
+            }
+        });
+        s.on("done", function() {
+            resolve(result);
+        });
+        s.on("error", function(err) {
+            reject(err);
+        });
+    });
+}
+
+module.exports = {
+    sync: LineByLineSync, 
+    readLineStream: createReadLineStream,
+    readLines: readLines
+};
 
 
 

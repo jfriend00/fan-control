@@ -332,7 +332,7 @@ var data = {
                     if (array[i].t > ageBegin) {
                         if (i !== 0) {
                             // remove i elements that came before this one
-                            console.log("ageData() removing " + i + " elements");
+                            // console.log("ageData() removing " + i + " elements");
                             array.splice(0, i);
                         }
                         break;
@@ -445,6 +445,19 @@ var data = {
                 return;
             }
         }
+    },
+    
+    getFanEvent: function(index) {
+        var len = this.fanOnOffEvents.length;
+        if (len) {
+            if (index < 0) {
+                index = len + index;
+            }
+            if (index >= 0 && index < len) {
+                return this.fanOnOffEvents[index];
+            }
+        }
+        return null;
     },
     
     getFanOnOffDataSmallJSON: function() {

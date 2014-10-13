@@ -12,6 +12,7 @@ var session = require('express-session');
 var readLines = require("./line-reader").readLines;
 var os = require('os');
 var heapdump = require('heapdump');
+var statvfs = Promise.promisify(require('statvfs'));
  
 var data = require('./fan-data.js');
 
@@ -94,12 +95,82 @@ app.get('/', function(req, res) {
     // - free memory
     // - free storage
     
+    function toMinutes(t) {
+        return Math.round(t / (1000 * 60));
+    }
+    
+    function toDays(t) {
+        return Math.ceil(t / (1000 * 60 * 60 * 24));
+    }
+    
+    function toMBs(num) {
+        return addCommas(Math.round(num / (1024 * 1024)));
+    }
+    
     var templateData = {
         totalMem: addCommas(os.totalmem()),
         freeMem: addCommas(os.freemem()),
         uptime: (os.uptime() / (60 * 60 * 24)).toFixed(1),      // days of uptime
-        restarts: []
+        restarts: [],
+        numTemperatures: data.getTemperatureLength(),
+        numTemperatureDays: toDays(Date.now() - data.getTemperatureItem(0).t)
     };
+    
+    var pDiskInfo = statvfs("/").then(function(stats) {
+        templateData.diskTotalSpace = toMBs(stats.bsize * stats.blocks);
+        templateData.diskFreeSpace = toMBs(stats.bsize * stats.bavail);
+    });
+    
+    
+    // get other server data info
+    
+    // see when the fan was last on
+    var lastOn = 0, lastOff = 0, cumDays = 0, lastDay = 0, curDay, totalDays;
+    var intervals = [];
+    data.eachEvent(function(event) {
+        if (event.event === "on" && event.t > lastOn) {
+            lastOn = event.t;
+            curDay = new Date(lastOn);
+            curDay.setHours(0,0,0,0);
+            if (curDay.getTime() !== lastDay) {
+                ++cumDays;
+            }
+            lastDay = curDay.getTime();
+            lastOff = 0;
+        }
+        // look for the next "off" event after the last "on" event
+        if (lastOn && !lastOff && event.event === "off") {
+            lastOff = event.t;
+            intervals.push(lastOff - lastOn);
+        }
+    });
+    var firstEvent = data.getFanEvent(0);
+    if (firstEvent) {
+        totalDays = toDays(Date.now() - firstEvent.t);
+    }
+    // make sure we always end the fan duration
+    if (!lastOff) {
+        lastOff = Date.now();
+    }
+    if (lastOn) {
+        templateData.lastOn = new Date(lastOn).toString().replace(/GMT.*$/, "").replace(/:\d+\s*$/, "").replace(" ", ", ");
+        templateData.lastOnDuration = toMinutes(lastOff - lastOn);
+    }
+    if (intervals.length) {
+        var longInterval = Math.max.apply(Math, intervals);
+        var shortInterval = Math.min.apply(Math, intervals);
+        var avgInterval = intervals.reduce(function(sum, value) {
+            return sum + value;
+        }, 0) / intervals.length;
+        templateData.longInterval = toMinutes(longInterval);
+        templateData.shortInterval = toMinutes(shortInterval);
+        templateData.avgInterval = toMinutes(avgInterval);
+        if (totalDays) {
+            templateData.percentDays = ((cumDays * 100)/ totalDays).toFixed(1);
+        } else {
+            templateData.percentDays = 0;
+        }
+    }
     
     var re = /(^.*?Z):\s+fan-control server started on port/;
     
@@ -122,7 +193,7 @@ app.get('/', function(req, res) {
         console.log("Error reading log file", err);
     });
     
-    Promise.all([p1]).then(function() {
+    Promise.all([p1, pDiskInfo]).then(function() {
         res.render('index', templateData);
     });
     

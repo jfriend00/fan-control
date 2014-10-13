@@ -125,7 +125,7 @@ app.get('/', function(req, res) {
     // get other server data info
     
     // see when the fan was last on
-    var lastOn = 0, lastOff = 0, cumDays = 0, lastDay = 0, curDay, totalDays;
+    var lastOn = 0, lastOff = 0, cumDays = 0, lastDay = 0, curDay, totalDays, onEventsMax = 0, onEventsToday = 0;
     var intervals = [];
     data.eachEvent(function(event) {
         if (event.event === "on" && event.t > lastOn) {
@@ -133,7 +133,13 @@ app.get('/', function(req, res) {
             curDay = new Date(lastOn);
             curDay.setHours(0,0,0,0);
             if (curDay.getTime() !== lastDay) {
+                // found an "on" event in a new day
+                onEventsToday = 1;
+                onEventsMax = Math.max(onEventsMax, onEventsToday);
                 ++cumDays;
+            } else {
+                ++onEventsToday;
+                onEventsMax = Math.max(onEventsMax, onEventsToday);
             }
             lastDay = curDay.getTime();
             lastOff = 0;
@@ -143,6 +149,7 @@ app.get('/', function(req, res) {
             lastOff = event.t;
             intervals.push(lastOff - lastOn);
         }
+        onEventsMax = Math.max(onEventsMax, onEventsToday);
     });
     var firstEvent = data.getFanEvent(0);
     if (firstEvent) {
@@ -171,10 +178,10 @@ app.get('/', function(req, res) {
             templateData.percentDays = 0;
         }
     }
+    templateData.onEventsMax = onEventsMax;
     
+    // look through log file for unexpected restarts
     var re = /(^.*?Z):\s+fan-control server started on port/;
-    
-    
     var p1 = readLines("/home/pi/logs/fan-control.log", function(line, priorLineRestartMsg) {
         var matches, d;
         matches = line.match(re);

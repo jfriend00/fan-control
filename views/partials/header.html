@@ -28,7 +28,6 @@
 		
 		function onConnect() {
 			// Note: this will get called upon reconnect too after connection disruption (like server restart)
-			console.log("received connect event: " + new Date());
 			join();
 		}
 		
@@ -38,7 +37,6 @@
 		
 		// if already connected, we can join now
 		if (socket.connected) {
-			console.log("already connected, sending join request");
 			join();
 		}
 	};

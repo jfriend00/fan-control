@@ -8,10 +8,24 @@
 	#restarts {width: 400px; margin: 10px auto;}
 	#restarts div {margin-top: 5px; margin-bottom: 5px; text-align: center;}
 	
-	.valueDisplay {margin: 50px auto; box-sizing: border-box;}
+	.valueDisplay {margin: 50px auto;}
 	.valueDisplay .row {clear: both; padding: 10px 0;}
-	.valueDisplay .left {box-sizing: border-box; width: 50%; float: left; text-align: right; font-weight: bold; padding-right: 5px;}
-	.valueDisplay .right {box-sizing: border-box; width: 50%; float: left; text-align: left; padding-left: 5px;}
+	.valueDisplay .left, .valueDisplay .right {
+		-webkit-box-sizing: border-box; 
+		-moz-box-sizing: border-box;
+		box-sizing: border-box; 
+		width: 50%; 
+		float: left; 
+	}
+	.valueDisplay .left {
+		text-align: right; 
+		padding-right: 5px;
+		font-weight: bold; 
+	}
+	.valueDisplay .right {
+		text-align: left; 
+		padding-left: 5px;
+	}
 	
 	
 </style>

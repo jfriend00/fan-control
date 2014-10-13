@@ -3,53 +3,43 @@
 {{> common_head}}
 
 <style>
-	#data, #serverData {margin: 35px auto;}
-	
-	/* generic two column form table styles */
-	.two_column table {margin: 0 auto;}
-	.two_column td {padding: 5px 0;}
-	.two_column td:first-child {text-align: right; padding-right: 5px; font-weight: bold;}
-	/* full row formatting */
-	.two_column .fullRow td {padding: 5px 0; text-align: center;}
-	.two_column .title {font-size: 160%; padding-bottom: 15px;}
-	.two_column .buttonRow td {padding-top: 15px;}
-	
-	.title {font-size: 160%; padding-bottom: 15px; margin: 0 auto; text-align: center !important; font-weight: normal !important;}
+	.title {font-size: 160%; padding-bottom: 15px; margin: 0 auto; text-align: center;}
 	
 	#restarts {width: 400px; margin: 10px auto;}
 	#restarts div {margin-top: 5px; margin-bottom: 5px; text-align: center;}
+	
+	.valueDisplay {margin: 50px auto; box-sizing: border-box;}
+	.valueDisplay .row {clear: both; padding: 10px 0;}
+	.valueDisplay .left {box-sizing: border-box; width: 50%; float: left; text-align: right; font-weight: bold; padding-right: 5px;}
+	.valueDisplay .right {box-sizing: border-box; width: 50%; float: left; text-align: left; padding-left: 5px;}
 	
 	
 </style>
 </head>
 <body>
 	{{> header}}
-	<table id="data" class="two_column">
-		<tbody>
-			<tr><td colspan="2" class="title">Hardware and OS Information</td></tr>
-			<tr><td>Total Memory: </td><td>{{totalMem}}</td></tr>
-			<tr><td>Free Memory: </td><td>{{freeMem}}</td></tr>
-			<tr><td>Total Diskspace: </td><td>{{diskTotalSpace}} MB</td></tr>
-			<tr><td>Free Diskspace: </td><td>{{diskFreeSpace}} MB</td></tr>
-			<tr><td>OS Uptime: </td><td>{{uptime}} days</td></tr>
-		</tbody>
-	</table>
+	<div class="valueDisplay">
+		<div class="title">Hardware and OS Information</div>
+		<div class="row"><div class="left">Total Memory:</div><div class="right">{{totalMem}}</div></div>
+		<div class="row"><div class="left">Free Memory:</div><div class="right">{{freeMem}}</div></div>
+		<div class="row"><div class="left">Total Diskspace:</div><div class="right">{{diskTotalSpace}} MB</div></div>
+		<div class="row"><div class="left">Free Diskspace:</div><div class="right">{{diskFreeSpace}} MB</div></div>
+		<div class="row"><div class="left">OS Uptime:</div><div class="right">{{uptime}} days</div></div>
+	</div>
 	
-	<table id="serverData" class="two_column">
-		<tbody>
-			<tr><td colspan="2" class="title">Fan Control Server Information</td></tr>
-			<tr><td>Recent Temperatures: </td><td>{{numTemperatures}} over {{numTemperatureDays}} days</td></tr>
-			{{#if lastOn}}
-			<tr><td>Fan Last On: </td><td>{{lastOn}} for {{lastOnDuration}} minutes</td></tr>
-			{{/if}}
-			<tr><td>Days Fan Turned On: </td><td>{{percentDays}}%</td></tr>
-			{{#if avgInterval}}
-			<tr><td>Average Fan Interval: </td><td>{{avgInterval}} minutes</td></tr>
-			<tr><td>Shortest Fan Interval: </td><td>{{shortInterval}} minutes</td></tr>
-			<tr><td>Longest Fan Interval: </td><td>{{longInterval}} minutes</td></tr>
-			{{/if}}
-		</tbody>
-	</table>
+	<div class="valueDisplay">
+		<div class="title">Fan Control Server Information</div>
+		<div class="row"><div class="left">Recent Temperatures:</div><div class="right">{{numTemperatures}} over {{numTemperatureDays}} days</div></div>
+		{{#if lastOn}}
+		<div class="row"><div class="left">Fan Last On:</div><div class="right">{{lastOn}} for {{lastOnDuration}} minutes</div></div>
+		{{/if}}
+		<div class="row"><div class="left">Days Fan Turned On:</div><div class="right">{{percentDays}}%</div></div>
+		{{#if avgInterval}}
+		<div class="row"><div class="left">Average Fan Interval:</div><div class="right">{{avgInterval}} minutes</div></div>
+		<div class="row"><div class="left">Shortest Fan Interval:</div><div class="right">{{shortInterval}} minutes</div></div>
+		<div class="row"><div class="left">Longest Fan Interval:</div><div class="right">{{longInterval}} minutes</div></div>
+		{{/if}}
+	</div>
 	
 	<div id="restarts">
 		<div class="title" >Unexpected server restarts</div>

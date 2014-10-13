@@ -103,18 +103,20 @@ app.get('/', function(req, res) {
     
     var re = /(^.*?Z):\s+fan-control server started on port/;
     
-    var p1 = readLines("/home/pi/logs/fan-control.log", function(line, arg) {
+    
+    var p1 = readLines("/home/pi/logs/fan-control.log", function(line, priorLineRestartMsg) {
         var matches, d;
         matches = line.match(re);
         if (matches) {
             d = new Date(matches[1]);
             // only record results that are not right around 4am
-            if (d.getHours() !== 4 || d.getMinutes() > 5) {
+            // and have a "restart attempt" on the previous line
+            if ((d.getHours() !== 4 || d.getMinutes() > 5) && priorLineRestartMsg) {
                 templateData.restarts.push(d.toString());
             }
         }
-        return arg;
-    }, []).then(function(serverStarts) {
+        return line.indexOf("Script restart attempt #") !== -1;
+    }, false).then(function(serverStarts) {
         
     }).catch(function(err) {
         console.log("Error reading log file", err);

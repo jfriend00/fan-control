@@ -33,7 +33,7 @@ app.use(cookieParser());
 app.use(session({secret: 'fanControl', saveUninitialized: true, resave: true}));
 app.use(function(req, res, next) {
     // fill in default values for common cookies so we don't have to do it elsewhere in the code
-    req.cookies.temperatureUnits = req.cookies.temperatureUnits || "C";
+    req.cookies.temperatureUnits = req.cookies.temperatureUnits || "F";
     next();
 });
 

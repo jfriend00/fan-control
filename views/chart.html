@@ -215,7 +215,7 @@ function toFahrenheit(c) {
     return Math.round(((c * 9 / 5) + 32) * 100) / 100;
 }
 
-var useFahrenheit = $.cookie("temperatureUnits") === "F";
+var useFahrenheit = $.cookie("temperatureUnits") !== "C";
 
 // from and to are number of days back from now
 // if either is not passed, they default to all data in that direction

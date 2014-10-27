@@ -309,6 +309,7 @@ var data = {
             var temps = this.temperatures;
             var numToRemove = temps.length - this.config.temperatureRetentionMaxItems;
             if (numToRemove > 0) {
+                console.log("ageData() - exceeded temperatureRetentionMaxItems, removing " + numToRemove + " items");
                 // this avoids making a copy of the data (good for memory usage reasons)
                 if (numToRemove === 1) {
                     // .shift() is 3x faster than .splice() and is the common use case
@@ -332,7 +333,7 @@ var data = {
                     if (array[i].t > ageBegin) {
                         if (i !== 0) {
                             // remove i elements that came before this one
-                            // console.log("ageData() removing " + i + " elements");
+                            console.log("ageData() keepNumDays - removing " + i + " elements");
                             array.splice(0, i);
                         }
                         break;

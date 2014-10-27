@@ -5,25 +5,78 @@
 #container {padding: 10px;}
 .fileDisplay {font-size: 10px;}
 .title {font-weight: bold; font-size: 140%;}
+.logRestartsHidden .common, .logFanEventsHidden .fan {display: none;}
+#options {padding: 10px;}
 </style>
 </head>
 <body>
 {{> header}}
+<div id="options">
+<label><input id="filterRestarts" type="checkbox"> Filter out normal restarts</label><br>
+<label><input id="fanOnOffEvents" type="checkbox"> Filter out fan on/off events</label><br></div>
 <div id="container">
 <div class="title">Log File</div>
 <div class="fileDisplay">
-<pre>
+<pre id="logData">
 {{logData}}
 </pre>
 </div>
 
 <div class="title">Err File</div>
 <div class="fileDisplay">
-<pre>
+<pre id="errData">
 {{errData}}
 </pre>
 </div>
 </div>
+
+<script>
+
+$("#filterRestarts").click(function() {
+	makeLines();
+	$(".fileDisplay pre").toggleClass("logRestartsHidden", this.checked);
+});	
+
+
+$("#fanOnOffEvents").click(function() {
+	makeLines();
+	$(".fileDisplay pre").toggleClass("logFanEventsHidden", this.checked);
+});	
+
+function makeLines() {
+	var legalSkipLines = {
+		"4": "Exiting process with code: 1",
+		"3": "error: Forever detected script exited with code: 1",
+		"2": "error: Script restart attempt #",
+		"1": "fan-control server started on port "
+	};
+	$(".fileDisplay pre").each(function() {
+		var item = $(this), markCnt, html, lines, expectedText, txt;
+		if (!item.find("span").length) {
+			lines = item.text().split("\n");
+			html = "<span>" + lines.join("\n</span><span>") + "</span>";
+			item.html(html);
+			markCnt = 0;
+			item.find("span").each(function() {
+				txt = $(this).text();
+				if (markCnt > 0) {
+					expectedText = legalSkipLines[markCnt--];
+					if (expectedText && txt.indexOf(expectedText) !== -1) {
+						$(this).addClass("common");
+						return;
+					}
+				}
+				if (txt.indexOf("daily 4am exit") !== -1) {
+					$(this).addClass("common");
+					markCnt = 4;
+				} else if (txt.indexOf("fan changed to") !== -1) {
+					$(this).addClass("fan");
+				}
+			});
+		}
+	});
+}
+</script>
 
 </body>
 </html>

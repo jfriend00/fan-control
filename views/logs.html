@@ -5,15 +5,21 @@
 #container {padding: 10px;}
 .fileDisplay {font-size: 10px;}
 .title {font-weight: bold; font-size: 140%;}
-.logRestartsHidden .common, .logFanEventsHidden .fan {display: none;}
+
+.logRestartsHidden .common, .logFanEventsHidden .fan, 
+.logAgeEventsHidden .age, .logOtherRestartsHidden .restart {display: none;}
+
 #options {padding: 10px;}
 </style>
 </head>
 <body>
 {{> header}}
 <div id="options">
-<label><input id="filterRestarts" type="checkbox"> Filter out normal restarts</label><br>
-<label><input id="fanOnOffEvents" type="checkbox"> Filter out fan on/off events</label><br></div>
+	<label><input id="filterRestarts" data-toggle="logRestartsHidden" type="checkbox"> Filter out normal restarts</label><br>
+	<label><input id="fanOnOffEvents" data-toggle="logFanEventsHidden" type="checkbox"> Filter out fan on/off events</label><br>
+	<label><input id="filterAgeEvents" data-toggle="logAgeEventsHidden" type="checkbox"> Filter out ageing events</label><br>
+	<label><input id="filterOtherRestarts" data-toggle="logOtherRestartsHidden" type="checkbox"> Filter out restarts</label><br>
+</div>
 <div id="container">
 <div class="title">Log File</div>
 <div class="fileDisplay">
@@ -32,16 +38,10 @@
 
 <script>
 
-$("#filterRestarts").click(function() {
+$("#options input").click(function() {
 	makeLines();
-	$(".fileDisplay pre").toggleClass("logRestartsHidden", this.checked);
-});	
-
-
-$("#fanOnOffEvents").click(function() {
-	makeLines();
-	$(".fileDisplay pre").toggleClass("logFanEventsHidden", this.checked);
-});	
+	$(".fileDisplay pre").toggleClass($(this).data("toggle"), this.checked);
+});
 
 function makeLines() {
 	var legalSkipLines = {
@@ -71,6 +71,10 @@ function makeLines() {
 					markCnt = 4;
 				} else if (txt.indexOf("fan changed to") !== -1) {
 					$(this).addClass("fan");
+				} else if (txt.indexOf("ageData()") !== -1) {
+					$(this).addClass("age");
+				} else if (txt.indexOf("fan-control server started on port") !== -1) {
+					$(this).addClass("restart");
 				}
 			});
 		}

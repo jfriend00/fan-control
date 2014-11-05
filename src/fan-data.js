@@ -657,35 +657,49 @@ HighLowLogger.prototype = {
     },
     
     checkForNewDays: function() {
-        var dayMs = 1000 * 60 * 60 * 24;
-        // a full day of data is considered to be within 30 mins of a full day
+        // issues for this code to consider:
+        // 1) Daylight savings transition will make a 23 or 25 hour day
+        // 2) We may end on a partial day (haven't finished recording that day yet)
+        // 3) Some days may not have continuous data (server was down part of the time)
+        // 4) 
+        
         // we assume that if it was running in the beginning and end, it was running the full day
         // this could be smarter, but probably doesn't need to be
-        var minDay = dayMs - (1000 * 60 * 30);
         var newData = [], currentDayBegin, currentDayEnd, 
-            highTemp = 0, lowTemp = 1000, firstTime, lastTime, haveData;
+            highTemp = 0, lowTemp = 1000, lastTime, haveData;
             
-        function flush() {
+        function flush(t) {
             // only record full days
-            if (haveData && (lastTime - firstTime >= minDay)) {
+            if (haveData && (t > currentDayEnd)) {
                 newData.push({t: currentDayBegin, high: highTemp, low: lowTemp});
             }
         }
         
+        function nextDay(t) {
+            // calc end of the day (allowing for daylight savings change)
+            var begin = new Date(t);
+            var end = new Date(t);
+            // advance one day (will properly account for daylight savings)
+            end.setDate(begin.getDate() + 1);
+            return end.getTime();
+        }
+        
         function initDay(dayBegin) {
             currentDayBegin = dayBegin;
-            currentDayEnd = dayBegin + dayMs;
+            currentDayEnd = nextDay(dayBegin);
             haveData = false;
         }
         
         // start looking for the next day after we already recorded
-        initDay(this.lastDayBegin + dayMs);
+        initDay(nextDay(this.lastDayBegin));
         
         data.eachTemperature(function(item) {
-            // only consider temperatures after lastDay
+            lastTime = item.t;
+            
+            // only consider temperatures in the day we're looking for
             if (item.t >= currentDayBegin) {
-                if (item.t >= currentDayEnd) {
-                    flush();
+                if (item.t > currentDayEnd) {
+                    flush(item.t);
                     initDay(getDayT(item.t));
                 }
                 // it is in the current day we are collecting data for
@@ -693,17 +707,14 @@ HighLowLogger.prototype = {
                 if (!haveData) {
                     highTemp = item.outsideTemp;
                     lowTemp = item.outsideTemp;
-                    firstTime = item.t;
-                    lastTime = item.t;
                     haveData = true;
                 } else {
                     highTemp = Math.max(item.outsideTemp, highTemp);
                     lowTemp = Math.min(item.outsideTemp, lowTemp);
-                    lastTime = item.t;
                 }
             }
         });
-        flush();
+        flush(lastTime);
         return newData;
     },
     

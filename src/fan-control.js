@@ -8,10 +8,8 @@ var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var validate = require('./validate');
 var timeAverager = require('./averager').timeAverager;
-var session = require('express-session');
 var readLines = require("./line-reader").readLines;
 var os = require('os');
-var heapdump = require('heapdump');
 var statvfs = Promise.promisify(require('statvfs'));
  
 var data = require('./fan-data.js');
@@ -30,7 +28,6 @@ hbs.registerPartials(__dirname + '/views/partials');
 // operative site-wide cookies:
 // temperatureUnits: "C" | "F"
 app.use(cookieParser());
-app.use(session({secret: 'fanControl', saveUninitialized: true, resave: true}));
 app.use(function(req, res, next) {
     // fill in default values for common cookies so we don't have to do it elsewhere in the code
     req.cookies.temperatureUnits = req.cookies.temperatureUnits || "F";

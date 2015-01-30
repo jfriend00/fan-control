@@ -1,4 +1,5 @@
 "use strict";
+var os = require('os');
 var Promise = require('bluebird');
 var fs = Promise.promisifyAll(require('fs'));
 var express = require('express');
@@ -9,8 +10,8 @@ var bodyParser = require('body-parser');
 var validate = require('./validate');
 var timeAverager = require('./averager').timeAverager;
 var readLines = require("./line-reader").readLines;
-var os = require('os');
 var statvfs = Promise.promisify(require('statvfs'));
+
  
 var data = require('./fan-data.js');
 

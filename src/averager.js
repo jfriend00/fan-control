@@ -16,7 +16,7 @@ timeAverager.prototype = {
         }
         
         if (this.data.length > 1) {
-            if (Math.abs(value - this.data[this.data.length - 2].value) > 0.25) {
+            if (Math.abs(value - this.data[this.data.length - 2].value) > 0.5) {
                 console.log("temperature jump from " + toFahrenheit(this.data[this.data.length - 2].value) + " to " + toFahrenheit(value));
             }
         }

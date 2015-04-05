@@ -98,7 +98,7 @@
 		<tr>
 			<td>Resume Auto Mode After:</td>
 			<td>
-				<input type="text" name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}" data-err_display_id="fanControlReturnToAutoErr"> 
+				<input type="text" id="fanControlReturnToAuto" name="fanControlReturnToAuto" value="{{fanControlReturnToAutoDefault}}" data-err_display_id="fanControlReturnToAutoErr"> 
 				<select name="fanControlReturnToAutoUnits" id="fanControlReturnToAutoUnits">
 					<option value="minutes" selected="selected">Minutes</option>
 					<option value="hours">Hours</option>
@@ -197,12 +197,29 @@
 	// this var set by server to initial state
 	var fanControl = "{{fanControl}}";
 	
-	function updateFanControlDisplay() {
+	function updateFanControlDisplay(normalizeUnits) {
 		$("#on-off input[name='mode'][value='" + fanControl + "'").prop("checked", true);
+		// now select the appropriate units based on the value
+		if (normalizeUnits && fanControl === "off") {
+			// get return to auto value in minutes
+			var time = +$("#fanControlReturnToAuto").val();
+			var units = "minutes";
+			if (time >= 60*24) {
+				// convert to days
+				time = time / (60 * 24);
+				units = "days";
+			} else if (time >= 60) {
+				// convert to hours
+				time = time / 60;
+				units = "hours";
+			}
+			$("#fanControlReturnToAuto").val(time.toFixed(1));
+			$("#fanControlReturnToAutoUnits").val(units);
+		}
 	}
 	
 	// set initial value
-	updateFanControlDisplay();
+	updateFanControlDisplay(true);
 	
 	
 	// on/off/auto form
@@ -219,7 +236,7 @@
 			// show settings saved message here
 			if (result.status === "ok") {
 				fanControl = result.fanControl;
-				updateFanControlDisplay();
+				updateFanControlDisplay(false);
 				showTempMsg(onOffForm, "Settings Saved Successfully");
 			} else {
 				showErrors(self, result.err);

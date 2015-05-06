@@ -470,13 +470,17 @@ var data = {
         return JSON.stringify(onOff);
     },
     
-    getTemperatureDataSmallJSON: function() {
+    getTemperatureDataSmall: function() {
         // build client-side data structure as an array of these [time, t1, t2]
         var temps = [];
         data.eachTemperature(function(item) {
             temps.push([item.t, item.atticTemp, item.outsideTemp]);
         });
-        return JSON.stringify(temps);
+        return temps;
+    },
+    
+    getTemperatureDataSmallJSON: function() {
+        return JSON.stringify(this.getTemperatureDataSmall());
     },
     
     // this is async (data is read from disk)

@@ -240,6 +240,7 @@ app.route('/settings')
   .get(function(req, res, next) {
     var tempData = {
         minTemp: toFahrenheit(config.minTemp),
+        minOutsideTemp: toFahrenheit(config.minOutsideTemp),
         deltaTemp: toFahrenheitDelta(config.deltaTemp),
         overshoot: toFahrenheitDelta(config.overshoot),
         waitTime: config.waitTime / (1000 * 60),
@@ -262,6 +263,7 @@ app.route('/settings')
   }).post(urlencodedParser, function(req, res, next) {
     // post can be either a form post or an ajax call, but it returns JSON either way
     var formatObj = {
+        "minOutsideTemp": "FtoC",
         "minTemp": "FtoC",
         "deltaTemp": {type: "FDeltaToC", rangeLow: 2, rangeLowMsg: "Temperature delta must be greater than 4&deg;F"},
         "overshoot": {type: "FDeltaToC", rangeLow: 0.555555554, rangeLowMsg: "Must be greater than 1&deg;F"},
@@ -345,8 +347,12 @@ app.get('/debug', function(req, res) {
 });
 
 app.get('/chart', function(req, res) {
+    // Temperature data is in this format [item.t, item.atticTemp, item.outsideTemp]
+    // add a new point onto the end of the data that represents the current temperatures now
+    var temps = data.getTemperatureDataSmall();
+    temps.push([Date.now(), atticAverager.getAverage(), outsideAverager.getAverage()]);
     var tempData = {
-        temperatures: data.getTemperatureDataSmallJSON(),
+        temperatures: JSON.stringify(temps),
         onOffData: data.getFanOnOffDataSmallJSON(),
         units: req.cookies.temperatureUnits
     };
@@ -504,6 +510,7 @@ function getTemperature(id) {
 
 // Fan algorithm
 // minTemp = must be hotter than this in the attic or fan will not come on (suggest 90 degrees F)
+// minOutsideTemp = outside temp must be hotter than this or fan will not come on
 // deltaTemp = delta between attic and outside temp that will trigger the fan (suggest 10 degrees F)
 // overshootDegrees = fan will stay on until temp diff is deltaTemp - overshootDegrees (suggest 2 degrees F)
 // Temperature must exceed deltaTemp for 10 minutes before turning the fan back on
@@ -517,6 +524,7 @@ var config = {
     },
     // temporarily set low for testing
     minTemp: 29.444,                            // 29.444C (85F)
+    minOutsideTemp: 32.2222,                    // 90F
     deltaTemp: 3.33333333333333,                // 6F
     overshoot: 0.55555555555555,                // ~1F
     waitTime: 10 * 60 * 1000,                   // 10 minutes (min time to wait from turn off before turning on)
@@ -662,11 +670,12 @@ function checkFanAction(atticTemp, outsideTemp) {
     var delta = atticTemp - outsideTemp;
     
     if (data.fanOn) {
-        // when fan is on, it's allowed to run down to config.minTemp - config.overshoot
+        // when fan is on, it's allowed to run down to 
+        //   config.minTemp - config.overshoot or config.minOutsideTemp - config.overshoot
         // this is to keep it from turning back on right away if there's a 
-        // little temperature rebound when the fan is turned off
-        if (atticTemp <= (config.minTemp - config.overshoot)) {
-            return {state: false, reason: reasonExtra + "attic temp not above minTemp - overshoot"};
+        //   little temperature rebound when the fan is turned off
+        if (atticTemp <= (config.minTemp - config.overshoot) || (outsideTemp <= (config.minOutsideTemp - config.overshoot))) {
+            return {state: false, reason: reasonExtra + "attic temp not above minTemp - overshoot or minOutsideTemp - overshoot"};
         }
         
         // if fan already on, see if we should turn it off
@@ -679,9 +688,9 @@ function checkFanAction(atticTemp, outsideTemp) {
         }
         
     } else {
-        // when fan is off, never turn it on if it's below config.minTemp
-        if (atticTemp <= config.minTemp) {
-            return {state: false, reason: reasonExtra + "attic temp not above minTemp"};
+        // when fan is off, never turn it on if attic temp is below config.minTemp or if outside temp is below config.minOutsideTemp
+        if (atticTemp <= config.minTemp || outsideTemp <= config.minOutsideTemp) {
+            return {state: false, reason: reasonExtra + "attic temp or outside temp not above minTemp"};
         }
     
         // fan is off, see if we should turn it on

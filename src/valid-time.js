@@ -33,7 +33,7 @@ function checkSystemTime(precision) {
     return ntpClient.getNetworkTimeAsync("pool.ntp.org", 123).then(function(ntpTime) {
         return Math.abs(ntpTime.getTime() - Date.now()) <= precision;
     }, function(err) {
-        log(1, "ntp time error: ", err);
+        log(7, "ntp time error");
         throw err;
     });
 }

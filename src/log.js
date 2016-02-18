@@ -1,5 +1,7 @@
 "use strict";
 
+var util = require('util');
+
 /*
 // version using the spread operator (which for some unknown reason does not work in node.js 5.x)
 function log(level, ...args) {
@@ -29,7 +31,7 @@ function log(level) {
         args.forEach(function(item) {
             var t = typeof item;
             if (t === "object") {
-                output.push(JSON.stringify(item));
+                output.push(util.inspect(item, {showHidden: true, depth: null}));
             } else if (t !== "undefined") {
                 output.push(item);
             }

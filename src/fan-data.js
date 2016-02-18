@@ -546,7 +546,7 @@ function initFS() {
         }
         // .spread is like .then, but multiple arguments are sent as separate args
         // rather than in an array
-        return fs.writeAsync(fd, data, offset, len, position).spread(function(written, buffer) {
+        return fs.writeAsync(fd, data, offset, len, position).then(function(written) {
             if (written !== len) {
                 throw new Error("fs.writeAsync() expected to write " + len + " bytes, but only wrote " + written + " bytes.");
             } else {

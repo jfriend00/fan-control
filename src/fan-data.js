@@ -3,6 +3,7 @@ var Promise = require('bluebird');
 var fs = Promise.promisifyAll(require('fs'));
 var lineReaderSync = require('./line-reader.js').sync;
 var readLineStream = require('./line-reader.js').readLineStream;
+var log = require('./log');
 
 initFS();
 
@@ -39,7 +40,7 @@ var data = {
 
         // can't write data out while it's already blocked for any reason
         if (self.dataBlock) {
-            console.log("hit data block on writeData() - skipping the write");
+            log(4, "hit data block on writeData() - skipping the write");
             return;
         }
         
@@ -104,7 +105,7 @@ var data = {
                 }
                 fs.renameSync(tempFilename, filename);
             } catch(e) {
-                console.log(e, "Error writing data - sync");
+                log(1, "Error writing data - sync", e);
             } finally {
                 // if file wasn't yet closed, then it's a partial file
                 // so we have to close it and get rid of it
@@ -113,7 +114,7 @@ var data = {
                         fs.closeSync(fd);
                         fs.unlinkSync(tempFilename);
                     } catch(e) {
-                        console.log(e, "Error cleaning up on writeData");
+                        log(1, "Error cleaning up on writeData", e);
                     }
                 }
                 self.dataBlock = false;
@@ -183,21 +184,21 @@ var data = {
                 return new Promise(function(resolve, reject) {
                     fs.unlinkAsync(filename).catch(function(e) {
                         if (e.code !== "ENOENT") {
-                            console.log(e, "Error removing old data file on writeData Async");
+                            log(1, "Error removing old data file on writeData Async", e);
                         }
                     }).finally(function() {
                         fs.renameAsync(tempFilename, filename).catch(function(e) {
-                            console.log(e, "Error on rename in writeData Async");
+                            log(1, "Error on rename in writeData Async", e);
                         }).finally(resolve);
                     });
                 });                
             }).catch(function(e) {
                 // if we got an error here, then close the file and remove it
-                console.log(e, "data.writeData() - error writing data (new format)");
+                log(1, "data.writeData() - error writing data (new format)", e);
                 fs.closeAsync(fd).then(function() {
                     return fs.unlinkAsync(tempFilename);
                 }).catch(function() {
-                    console.log("Error cleaning up on .catch() from writeData");
+                    log(1, "Error cleaning up on .catch() from writeData");
                 });
             }).finally(function() {
                 self.dataBlock = false;
@@ -230,7 +231,7 @@ var data = {
                             self.addTemperature(tAttic, tOutside, t);
                         }
                     if (!valid)
-                        console.log("Unexpected or missing data while processing temperature line: " + line);
+                        log(1, "Unexpected or missing data while processing temperature line: " + line);
                     }
                 },
                 fanOnOff: function(line) {
@@ -247,7 +248,7 @@ var data = {
                         }
                     }
                     if (!valid) {
-                        console.log("Unexpected or missing data while processing fan event line: " + line);
+                        log(1, "Unexpected or missing data while processing fan event line: " + line);
                     }
                 },
                 dummy: function() {}
@@ -269,14 +270,14 @@ var data = {
                     // section start
                     fn = processors[matches[1]];  
                     if (!fn) {
-                        console.log("Unknown section: " + matches[1] + " - skipping section");
+                        log(1, "Unknown section: " + matches[1] + " - skipping section");
                         fn = processors.dummy;
                     }
                 }
             }
         } catch(e) {
             if (e.code !== "ENOENT") {
-                console.log(e, "lineReader error");
+                log(1, "lineReader error", e);
             }
         }
     },
@@ -285,7 +286,7 @@ var data = {
     // if data isn't blocked
     processQueue: function() {
         if (!this.dataBlock && this.queue.length) {
-            console.log("running queued functions");
+            log(5, "running queued functions");
             // this assumes all queued operations are synchronous
             // thus we don't have to check for dataBlock after each one
             // it will tolerate new queued functions being added while running others
@@ -309,7 +310,7 @@ var data = {
             var temps = this.temperatures;
             var numToRemove = temps.length - this.config.temperatureRetentionMaxItems;
             if (numToRemove > 0) {
-                console.log("ageData() - exceeded temperatureRetentionMaxItems, removing " + numToRemove + " items");
+                log(5, "ageData() - exceeded temperatureRetentionMaxItems, removing " + numToRemove + " items");
                 // this avoids making a copy of the data (good for memory usage reasons)
                 if (numToRemove === 1) {
                     // .shift() is 3x faster than .splice() and is the common use case
@@ -333,7 +334,7 @@ var data = {
                     if (array[i].t > ageBegin) {
                         if (i !== 0) {
                             // remove i elements that came before this one
-                            console.log("ageData() keepNumDays - removing " + i + " elements");
+                            log(5, "ageData() keepNumDays - removing " + i + " elements");
                             array.splice(0, i);
                         }
                         break;
@@ -348,7 +349,7 @@ var data = {
         }
         
         if (this.dataBlock) {
-            console.log("hit dataBlock on ageData() - queueing");
+            log(5, "hit dataBlock on ageData() - queueing");
             this.queue.push(run.bind(this));
         } else {
             run.call(this);
@@ -384,7 +385,7 @@ var data = {
         }
         
         if (this.dataBlock) {
-            console.log("hit dataBlock on addTemperature() - queueing");
+            log(5, "hit dataBlock on addTemperature() - queueing");
             this.queue.push(add);
         } else {
             add();
@@ -400,7 +401,7 @@ var data = {
         }
         
         if (this.dataBlock) {
-            console.log("hit dataBlock on addFanOnOffEvent() - queueing");
+            log(5, "hit dataBlock on addFanOnOffEvent() - queueing");
             this.queue.push(add);
         } else {
             add();
@@ -543,20 +544,17 @@ function initFS() {
         if (!(data instanceof Buffer)) {
             data = new Buffer(data);
         }
-        return new Promise(function(resolve, reject) {
-            // .spread is like .then, but multiple arguments are sent as separate args
-            // rather than in an array
-            fs.writeAsync(fd, data, offset, len, position).spread(function(written, buffer) {
-                if (written !== len) {
-                    reject(new Error("expected to write " + len + " bytes, but only wrote " + written + " bytes."));
-                } else {
-                    resolve(written);
-                }
-            }).catch(function(e) {
-                console.log(e, "fs.writeAsync threw");
-                console.log('"' + str + '"');
-                reject(e);
-            });
+        // .spread is like .then, but multiple arguments are sent as separate args
+        // rather than in an array
+        return fs.writeAsync(fd, data, offset, len, position).spread(function(written, buffer) {
+            if (written !== len) {
+                throw new Error("fs.writeAsync() expected to write " + len + " bytes, but only wrote " + written + " bytes.");
+            } else {
+                return written;
+            }
+        }).catch(function(e) {
+            log(1, "fs.writeAsync() threw", e, '"' + str + '"');
+            throw(e);
         });
     };
     
@@ -626,7 +624,7 @@ HighLowLogger.prototype = {
             this.lastDayBegin = data.t;
         } catch(e) {
             if (e.code !== "ENOENT") {
-                console.log("Error initializing HighLowLogger", e);
+                log(1, "Error initializing HighLowLogger", e);
             }
         } finally {
             if (fd) {

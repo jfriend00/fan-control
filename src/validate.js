@@ -1,3 +1,5 @@
+const log = require('./log');
+
 // data validation functions
 
 var simpleNumberRegex = /^[-+]?\d*(\.\d*)?$/;
@@ -123,7 +125,7 @@ function parseNumber(tempStr, args) {
         result.val = temp;
         return result;
     } catch(e) {
-        console.log("Exception thrown when parsing number string: '" + tempStr + "' ", e);
+        log(1, "Exception thrown when parsing number string: '" + tempStr + "' ", e);
         result.err = "can't parse number";
         result.val = null;
         return result;

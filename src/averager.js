@@ -1,3 +1,5 @@
+const log = require('./log');
+
 // object to provide a moving average over a certain time (all points equally weighted within that time)
 function timeAverager(deltaT) {
     this.deltaT = deltaT;
@@ -17,7 +19,7 @@ timeAverager.prototype = {
         
         if (this.data.length > 1) {
             if (Math.abs(value - this.data[this.data.length - 2].value) > 0.5) {
-                console.log("temperature jump from " + toFahrenheit(this.data[this.data.length - 2].value) + " to " + toFahrenheit(value));
+                log(3, "temperature jump from " + toFahrenheit(this.data[this.data.length - 2].value) + " to " + toFahrenheit(value));
             }
         }
         

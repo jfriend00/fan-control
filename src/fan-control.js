@@ -10,7 +10,11 @@ var bodyParser = require('body-parser');
 var validate = require('./validate');
 var timeAverager = require('./averager').timeAverager;
 var readLines = require("./line-reader").readLines;
-var statvfs = Promise.promisify(require('statvfs'));
+var useStatvfs = false;
+if (useStatvfs) {
+    var statvfs = Promise.promisify(require('statvfs'));
+}
+var log = require("./log");
 
  
 var data = require('./fan-data.js');
@@ -114,11 +118,17 @@ app.get('/', function(req, res) {
         numTemperatureDays: toDays(Date.now() - data.getTemperatureItem(0).t)
     };
     
-    var pDiskInfo = statvfs("/").then(function(stats) {
-        templateData.diskTotalSpace = toMBs(stats.bsize * stats.blocks);
-        templateData.diskFreeSpace = toMBs(stats.bsize * stats.bavail);
-    });
-    
+    var pDiskInfo;
+    if (useStatvfs) {
+        pDiskInfo = statvfs("/").then(function(stats) {
+            templateData.diskTotalSpace = toMBs(stats.bsize * stats.blocks);
+            templateData.diskFreeSpace = toMBs(stats.bsize * stats.bavail);
+        });
+    } else {
+        pDiskInfo = Promise.resolve();
+            templateData.diskTotalSpace = 1;
+            templateData.diskFreeSpace = 100;
+    }
     
     // get other server data info
     
@@ -195,7 +205,7 @@ app.get('/', function(req, res) {
     }, false).then(function(serverStarts) {
         
     }).catch(function(err) {
-        console.log("Error reading log file", err);
+        log(2, "Error reading log file", err);
     });
     
     Promise.all([p1, pDiskInfo]).then(function() {
@@ -230,7 +240,7 @@ app.get('/logs', function(req, res) {
         }
         res.render('logs', templateData);
     }).catch(function(e) {
-        console.log("err getting log files");
+        log(2, "err getting log files");
         // figure out what to display here
         res.render(e);
     });
@@ -382,7 +392,7 @@ app.get('/api/highlow', function(req, res, next) {
 });
 
 var server = app.listen(8081, function() {
-    console.log(new Date().toISOString() + ": fan-control server started on port 8081");
+    log(5, new Date().toISOString() + ": fan-control server started on port 8081");
 });
 
 // web sockets handler
@@ -471,7 +481,7 @@ function getTemperature(id) {
         var fname = "/sys/bus/w1/devices/" + id + "/w1_slave";
         fs.readFile(fname,  function(err, data) {
             if (err || !data) {
-                console.log("failed to read temperature file: " + fname);
+                log(1, "failed to read temperature file: " + fname, err);
                 reject("filename (" + fname + ") read failed.");
                 return;
             }
@@ -488,13 +498,14 @@ function getTemperature(id) {
                     // convert to number and return it
                     resolve(+match[1] / 1000);
                 } else {
-                    console.log("didn't find t=xxxxx");
-                    reject("didn't find t=xxxxx");
+                    var msg = "didn't find t=xxxxx, " + lines[2];
+                    log(1, msg);
+                    reject(msg);
                     return;
                 }
             } else {
                 // no valid temperature here
-                console.log("didn't find 'YES'");
+                log(1, "didn't find 'YES'", lines[1]);
                 reject("didn't find 'YES'");
                 return;
             }
@@ -547,7 +558,7 @@ var config = {
     // returns a promise
     save: function() {
         return fs.writeFileAsync(this.configFilename, JSON.stringify(this), 'utf8').catch(function(e) {
-            console.log("Error saving config file");
+            log(1, "Error saving config file");
         });
     },
     // this is only done synchronously because it's just done at startup
@@ -565,7 +576,7 @@ var config = {
                 }
             }
             if (!this.thermometerInfo.atticID || !this.thermometerInfo.outsideID) {
-                console.log("Missing thermometerInfo.atticID or thermometerInfo.outsideID");
+                log(1, "Missing thermometerInfo.atticID or thermometerInfo.outsideID");
                 process.exit(1);
             }
             // make sure these two calibration factors exist
@@ -574,7 +585,7 @@ var config = {
         } catch(e) {
             // avoid error logging if the only issue is that the file doesn't exist
             if (e.code !== 'ENOENT') {
-                console.log("Error reading config or parsing JSON. ", e);
+                log(1, "Error reading config or parsing JSON. ", e);
             }
         }
     }
@@ -590,11 +601,11 @@ config.load();
     config.fanPorts.forEach(function(port) {
         gpio.openGrab(port, function(err) {
             if (err) {
-                console.log("error opening gpio port " + port + " at startup");
+                log(2, "error opening gpio port " + port + " at startup");
             }
             gpio.read(port, function(err, value) {
                 if (err) {
-                    console.log("error reading gpio port " + port + " at startup");
+                    log(2, "error reading gpio port " + port + " at startup");
                 } else {
                     // at least one fan is on so indicate that in our data
                     if (value) {
@@ -620,7 +631,7 @@ data.init({
 
 // setup process exit handlers so we write our data
 process.on('exit', function(code) {
-    console.log("Exiting process with code: " + code);
+    log(4, "Exiting process with code: " + code);
     
     // synchronously turn off both fans upon shut-down
     setFanHardwareOnOff(false, 0, true);
@@ -632,12 +643,12 @@ process.on('exit', function(code) {
     data.writeData(config.dataFilename, true);
     
 }).on('SIGINT', function() {
-    console.log("SIGINT signal received - exiting");
+    log(4, "SIGINT signal received - exiting");
     if (!data.getDataBlock()) {
         process.exit(2);
     }
 }).on('SIGTERM', function() {
-    console.log("SIGTERM signal received - exiting");
+    log(4, "SIGTERM signal received - exiting");
     if (!data.getDataBlock()) {
         process.exit(3);
     }
@@ -727,9 +738,9 @@ function setFan(fanOn, reason, ignoreTime) {
             data.lastFanChangeTime = curTime;
             // add fan change event
             data.addFanOnOffEvent(fanOn ? "on" : "off", reason);
-            console.log("fan changed to " + (fanOn ? "on" : "off"));
+            log(3, "fan changed to " + (fanOn ? "on" : "off"));
         } else {
-            console.log("fan turn on holding for waitTime");
+            log(3, "fan turn on holding for waitTime");
         }
     }
 }
@@ -747,7 +758,7 @@ function setFanHardwareOnOff(on, delay, sync) {
             var pin = fanPorts[cntr];
             gpio.write(pin, val, function(err) {
                 if (err) {
-                    console.log("gpio.write() error", err);
+                    log(1, "gpio.write() error", err);
                 } else {
                     ++cntr;
                     if (delay) {
@@ -768,7 +779,7 @@ function setFanHardwareOnOff(on, delay, sync) {
             try {
                 gpio.writeSync(fanPorts[cntr], val);
             } catch(e) {
-                console.log("Error on gpio.writeSync()");
+                log(1, "Error on gpio.writeSync()");
             }
         }
     } else {
@@ -781,6 +792,7 @@ function setFanHardwareOnOff(on, delay, sync) {
 var outsideAverager = new timeAverager(config.outsideAveragingTime);
 var atticAverager = new timeAverager(config.outsideAveragingTime);
 
+var consecutivePollErrors = 0;
 function poll() {
     Promise.all([getTemperature(config.thermometerInfo.atticID), getTemperature(config.thermometerInfo.outsideID)]).spread(function(atticTempRaw, outsideTempRaw) {
         var minDiff = config.minRecordDiff, recordTemp = true, atticTemp, outsideTemp;
@@ -814,29 +826,74 @@ function poll() {
         var result = checkFanAction(atticTemp, outsideTemp);
         setFan(result.state, result.reason);
         
+        // reset error counter
+        consecutivePollErrors = 0;
+        
         /*
-        console.log(new Date().toString().replace(/\s*GMT.*$/, "") + ": attic temp = " + atticTemp + 
+        log(1, new Date().toString().replace(/\s*GMT.*$/, "") + ": attic temp = " + atticTemp + 
             ", outside temp = " + outsideTemp + ", len=" + data.getTemperatureLength() + 
             ", data recorded = " + recordTemp);
         */
     }, function(err) {
-        console.log("promise rejected on temperature fetch: " + err);
+        log(1, "promise rejected on temperature fetch: " + err);
+        ++consecutivePollErrors;
+        // after a bunch of consecutive temperature polling errors, we shut-down the process to let it restart
+        if (consecutivePollErrors > 20) {
+            log(1, "consecutivePollErrors exceeded threshold, restarting process");
+            shutdown(1);
+        }
+        // FIXME: what to do if every restart has this same issue
     });
 }
 
-poll();
-data.temperatureInterval = setInterval(poll, 10 * 1000);
+// We don't want to start polling temperatures or recording them until we know that the
+// system time is correct (it will mess up the recorded data)
+// To do that, we get the current time from an ntp server and compare it to the current system time
+var validTime = require("./valid-time");
+
+// look for an accuracy of 2 minutes or better and keep checking forever
+// note: this will require a working internet connection before it will start polling the temperatures
+validTime.waitForAccurateSystemTime(2 * 60 * 1000, 0).then(function() {
+    poll();
+    data.temperatureInterval = setInterval(poll, 10 * 1000);
+}, function(err) {
+    log(1, err);
+    process.exit(1);
+});
+
+function shutdown(exitCode) {
+    var cntr = 20;
+    // stop our polling interval
+    clearInterval(data.temperatureInterval);
+    
+    // force fan hardware off and write it synchronously
+    setFanHardwareOnOff(false, 0, true);
+    
+    // save data and exit process
+    function exit() {
+        // write data synchronously
+        data.writeData(config.dataFilename, true);
+        process.exit(exitCode);
+    }
+    
+    // see if we can write the data now
+    function check() {
+        if (!data.getDataBlock() || cntr < 0) {
+            exit();
+        } else {
+            log(4, "ran into dataBlock on shutdown - waiting for block to clear");
+            --cntr;
+            // check again in 30 seconds
+            setTimeout(check, 30 * 1000);
+        }
+    }
+    check();
+}
 
 
 // kill the server process at 4am each night
 // the forever daemon will restart it after we stop it
 (function() {
-    function exit() {
-        data.writeData(config.dataFilename, true);
-        console.log("daily 4am exit - forever daemon should restart us");
-        process.exit(1);
-    }
-    
     var exitTime = new Date();
     if (exitTime.getHours() < 4) {
         exitTime.setHours(4, 0, 0, 0);
@@ -845,25 +902,10 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
     }
     // calc amount of time until restart
     var t = exitTime.getTime() - Date.now();
-    setTimeout(function(){
-        // check a max of 20 times
-        var cntr = 20;
-        
-        function check() {
-            if (!data.getDataBlock() || cntr < 0) {
-                exit();
-            } else {
-                console.log("ran into dataBlock on 4am exit - waiting for block to clear");
-                --cntr;
-                // check again in 30 seconds
-                setTimeout(check, 30 * 1000);
-            }
-        }
-        
-        check();
+    setTimeout(function() {
+        log(4, "daily 4am shutdown");
+        shutdown(1);
     }, t);
-    
-    
 })();
 
 
@@ -885,7 +927,7 @@ data.temperatureInterval = setInterval(poll, 10 * 1000);
         var newVal = lastValue %2;
         gpio.write(pin, newVal, function(err) {        // Set pin 16 high (1)
             if (err) {
-                console.log("gpio.write error: ", err);
+                log(2, "gpio.write error: ", err);
                 return;
             }
         });        

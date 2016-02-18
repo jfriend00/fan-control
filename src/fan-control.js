@@ -558,7 +558,8 @@ var config = {
     // returns a promise
     save: function() {
         return fs.writeFileAsync(this.configFilename, JSON.stringify(this), 'utf8').catch(function(e) {
-            log(1, "Error saving config file");
+            log(1, "Error saving config file", e);
+            throw e;
         });
     },
     // this is only done synchronously because it's just done at startup

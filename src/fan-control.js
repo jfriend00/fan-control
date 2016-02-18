@@ -10,9 +10,9 @@ var bodyParser = require('body-parser');
 var validate = require('./validate');
 var timeAverager = require('./averager').timeAverager;
 var readLines = require("./line-reader").readLines;
-var useStatvfs = false;
-if (useStatvfs) {
-    var statvfs = Promise.promisify(require('statvfs'));
+var showDisk = true;
+if (showDisk) {
+    var getDiskSpace = Promise.promisify(require('diskusage').check);
 }
 var log = require("./log");
 
@@ -119,10 +119,10 @@ app.get('/', function(req, res) {
     };
     
     var pDiskInfo;
-    if (useStatvfs) {
-        pDiskInfo = statvfs("/").then(function(stats) {
-            templateData.diskTotalSpace = toMBs(stats.bsize * stats.blocks);
-            templateData.diskFreeSpace = toMBs(stats.bsize * stats.bavail);
+    if (showDisk) {
+        pDiskInfo = getDiskSpace("/").then(function(stats) {
+            templateData.diskTotalSpace = toMBs(stats.total);
+            templateData.diskFreeSpace = toMBs(stats.available);
         });
     } else {
         pDiskInfo = Promise.resolve();

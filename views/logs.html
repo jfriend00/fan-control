@@ -70,7 +70,6 @@
 <script>
 
 function handleCheckbox() {
-	makeLines();
 	$(".fileDisplay pre").toggleClass($(this).data("toggle"), this.checked);
 }
 
@@ -113,7 +112,6 @@ function parseNumbers(str) {
 
 function showHideNumbers() {
 	$("#options input").prop("checked", false);
-	makeLines();
 	var shows = parseNumbers($("#showNumbers").val());
 	var hides = parseNumbers($("#hideNumbers").val());
 	var doingShow = shows.length !== 0;
@@ -141,7 +139,6 @@ function showHideNumbers() {
 $("#doNumbers").click(showHideNumbers);
 
 $("#clearNumbers").click(function() {
-	makeLines();
 	$(".fileDisplay pre span").show();
 	$("#options input").prop("checked", false);
 });
@@ -177,8 +174,13 @@ function makeLines() {
 			// now lets mark other types of lines
 			var specials = ["fan changed to", "ageData()", "fan-control server started on port"];
 			var specialsClass = ["fan", "age", "restart"];
+			var leadingNumbers = /^\d+/;
 			lines.each(function(i, element) {
-				var txt = $(element).text();
+				var origTxt = $(element).text();
+				var txt = origTxt.trim();
+				if (txt && !leadingNumbers.test(txt)) {
+					$(element).text("0; " + origTxt);
+				}
 				specials.forEach(function(item, index) {
 					if (txt.indexOf(item) !== -1) {
 						$(element).addClass(specialsClass[index]);
@@ -188,6 +190,9 @@ function makeLines() {
 		}
 	});
 }
+
+$(document).ready(makeLines);
+
 </script>
 
 </body>

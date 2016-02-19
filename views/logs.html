@@ -12,6 +12,10 @@
 
 #options, #numbers {padding: 10px;}
 
+#options {width: 250px; float: left;}
+#numbers {width: 500px; float: left;}
+
+
 #numbers label {
     display: inline-block;
     float: left;
@@ -29,10 +33,16 @@
 
 .clear {clear: both;}
 
+/* restarts show initially collapsed */
+.restartDetail {display: none; margin-left: 50px;}
+.restart.expanded .restartDetail {display: block;}
+.restartDetail.shutdown {display: block; margin-left: 0;}
+
 </style>
 </head>
 <body>
 {{> header}}
+<div id="selectors">
 <div id="options">
 	<label><input id="filterAll" type="checkbox"> Filter All</label><br>
 	<label><input id="filterRestarts" data-toggle="logRestartsHidden" type="checkbox"> Filter out normal restarts</label><br>
@@ -51,6 +61,8 @@
 		<button id="doNumbers">Show/Hide</button> <button id="clearNumbers">Clear</button>
 	</div>
 </div>
+</div>
+<div class="clear"><hr></div>
 <div id="container">
 <div class="title">Log File</div>
 <div class="fileDisplay">
@@ -117,7 +129,7 @@ function showHideNumbers() {
 	var doingShow = shows.length !== 0;
 	var reNum = /^\d+/;
 	$(".fileDisplay pre").each(function() {
-		var lines = $(this).find("span"), matches, item;
+		var lines = $(this).find("div"), matches, item;
 		lines.each(function() {
 			item = $(this);
 			matches = item.text().match(reNum);
@@ -139,22 +151,22 @@ function showHideNumbers() {
 $("#doNumbers").click(showHideNumbers);
 
 $("#clearNumbers").click(function() {
-	$(".fileDisplay pre span").show();
+	$(".fileDisplay pre div").show();
 	$("#options input").prop("checked", false);
 });
 
 function makeLines() {
 	$(".fileDisplay pre").each(function() {
 		var item = $(this), markCnt, html, lines;
-		// if not already broken into spans
-		if (!item.find("span").length) {
-			// split into lines with a <span> for each line
+		// if not already broken into divs
+		if (!item.find("div").length) {
+			// split into lines with a <div> for each line
 			lines = item.text().split("\n");
-			html = "<span>" + lines.join("\n</span><span>") + "</span>";
+			html = "<div>" + lines.join("</div><div>") + "</div>";
 			item.html(html);
 
 			// get all the new lines
-			lines = item.find("span");
+			lines = item.find("div");
 			
 			// lets mark normal 4am restarts
 			lines.each(function(index) {
@@ -166,6 +178,7 @@ function makeLines() {
 					if (expected.every(function(item, i) {
 						return restartLines.eq(i + 1).text().indexOf(item) !== -1;
 					})) {
+						restartLines.addClass("restartDetail").eq(0).addClass("shutdown");
 						restartLines.wrapAll("<div class='restart common' />");
 					}
 				}
@@ -188,6 +201,13 @@ function makeLines() {
 				});
 			});
 		}
+	});
+	// add event handlers here
+	$(".fileDisplay").on("click", ".shutdown", function(e) {
+		// toggle display here
+		console.log(e);
+		e.stopPropagation();
+		$(this).closest(".restart").toggleClass("expanded");
 	});
 }
 

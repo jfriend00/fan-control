@@ -10,11 +10,15 @@
 .logAgeEventsHidden .age, .logOtherRestartsHidden .restart {display: none;}
 .restart.common {color: blue;}
 
-#options, #numbers {padding: 10px;}
+#options, #numbers, #regex {padding: 10px;}
 
-#options {width: 250px; float: left;}
-#numbers {width: 500px; float: left;}
+#options {width: 220px; float: left;}
+#numbers {width: 430px; float: left;}
+#regex {width: 400px; float: left;}
 
+#regex label {padding: 0 10px 0 0;}
+#regex input {margin: 0 5px 5px 0;}
+.hidden {display: none;}
 
 #numbers label {
     display: inline-block;
@@ -26,9 +30,9 @@
 
 }
 #numbers input {
-  display: inline-block;
-  float: left;
-  margin: 0 5px 5px 0;
+    display: inline-block;
+    float: left;
+    margin: 0 5px 5px 0;
 }
 
 .clear {clear: both;}
@@ -50,6 +54,16 @@
 	<label><input id="filterAgeEvents" data-toggle="logAgeEventsHidden" type="checkbox"> Filter out ageing events</label><br>
 	<label><input id="filterOtherRestarts" data-toggle="logOtherRestartsHidden" type="checkbox"> Filter out restarts</label><br>
 </div>
+<div id="regex">
+	<div class="clear">
+		<form id="regexForm"><label>Regular Expression: <input id="doRegex"></label></form>
+	</div>
+	<div id="regexError" class="clear">
+	</div>
+	<div class="clear">
+		<button id="runRegex">Search</button>
+	</div>
+</div>
 <div id="numbers">
 	<div class="clear">
 		<label>Show numbers:</label> <input id="showNumbers"> (ex: 1,2-4)
@@ -62,6 +76,7 @@
 	</div>
 </div>
 </div>
+
 <div class="clear"><hr></div>
 <div id="container">
 <div class="title">Log File</div>
@@ -155,6 +170,32 @@ $("#clearNumbers").click(function() {
 	$("#options input").prop("checked", false);
 });
 
+$("#regexForm").submit(function(e) {
+	e.preventDefault();
+	processRegex(e);
+});
+
+function processRegex(e) {
+	var str = $("#doRegex").val();
+	if (!str) {
+		$(".fileDisplay .line").removeClass("hidden");
+	} else {
+		try {
+			var re = new RegExp(str);
+			$("#regexError").text("");
+			var txt, line;
+			$(".fileDisplay .line").each(function() {
+				line = $(this);
+				line.toggleClass("hidden", !re.test(line.text()));
+			});
+		} catch(e) {
+			$("#regexError").text(e.message);
+		}
+	}
+}
+
+$("#runRegex").click(processRegex);
+
 function makeLines() {
 	$(".fileDisplay pre").each(function() {
 		var item = $(this), markCnt, html, lines;
@@ -162,7 +203,7 @@ function makeLines() {
 		if (!item.find("div").length) {
 			// split into lines with a <div> for each line
 			lines = item.text().split("\n");
-			html = "<div>" + lines.join("</div><div>") + "</div>";
+			html = "<div class='line'>" + lines.join("</div><div class='line'>") + "</div>";
 			item.html(html);
 
 			// get all the new lines

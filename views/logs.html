@@ -8,8 +8,27 @@
 
 .logRestartsHidden .common, .logFanEventsHidden .fan, 
 .logAgeEventsHidden .age, .logOtherRestartsHidden .restart {display: none;}
+.restart.common {color: blue;}
 
-#options {padding: 10px;}
+#options, #numbers {padding: 10px;}
+
+#numbers label {
+    display: inline-block;
+    float: left;
+    clear: left;
+    width: 120px;
+	padding: 0 10px;
+    text-align: right;
+
+}
+#numbers input {
+  display: inline-block;
+  float: left;
+  margin: 0 5px 5px 0;
+}
+
+.clear {clear: both;}
+
 </style>
 </head>
 <body>
@@ -20,6 +39,17 @@
 	<label><input id="fanOnOffEvents" data-toggle="logFanEventsHidden" type="checkbox"> Filter out fan on/off events</label><br>
 	<label><input id="filterAgeEvents" data-toggle="logAgeEventsHidden" type="checkbox"> Filter out ageing events</label><br>
 	<label><input id="filterOtherRestarts" data-toggle="logOtherRestartsHidden" type="checkbox"> Filter out restarts</label><br>
+</div>
+<div id="numbers">
+	<div class="clear">
+		<label>Show numbers:</label> <input id="showNumbers"> (ex: 1,2-4)
+	</div>
+	<div class="clear">
+		<label>Hide numbers:</label> <input id="hideNumbers">
+	</div>
+	<div class="clear">
+		<button id="doNumbers">Show/Hide</button> <button id="clearNumbers">Clear</button>
+	</div>
 </div>
 <div id="container">
 <div class="title">Log File</div>
@@ -51,39 +81,109 @@ $("#filterAll").click(function() {
 	$("#options input").not(this).prop("checked", checked).each(handleCheckbox);
 });
 
-function makeLines() {
-	var legalSkipLines = {
-		"4": "Exiting process with code: 1",
-		"3": "error: Forever detected script exited with code: 1",
-		"2": "error: Script restart attempt #",
-		"1": "fan-control server started on port "
-	};
+function parseNumbers(str) {
+	str = str.trim();
+	var result = {length: 0};
+	if (str) {
+		var nums = str.split(/\s*,\s*/);
+		var re = /^(\d+)\s*-\s*(\d+)$/;
+		var matches, begin, end, tmp;
+		nums.forEach(function(item) {
+			matches = item.match(re);
+			if (matches) {
+				begin = +matches[1];
+				end = +matches[2];
+				if (begin > end) {
+					temp = end;
+					end = begin;
+					begin = temp;
+				}
+				for (var i = begin; i <= end; i++) {
+					result[i] = true;
+					++result.length;
+				}
+			} else {
+				result[item] = true;
+				++result.length;
+			}
+		});
+	}
+	return result;
+}
+
+function showHideNumbers() {
+	$("#options input").prop("checked", false);
+	makeLines();
+	var shows = parseNumbers($("#showNumbers").val());
+	var hides = parseNumbers($("#hideNumbers").val());
+	var doingShow = shows.length !== 0;
+	var reNum = /^\d+/;
 	$(".fileDisplay pre").each(function() {
-		var item = $(this), markCnt, html, lines, expectedText, txt;
+		var lines = $(this).find("span"), matches, item;
+		lines.each(function() {
+			item = $(this);
+			matches = item.text().match(reNum);
+			if (matches) {
+				var num = matches[0];
+				if (doingShow) {
+					item.toggle(!!shows[num]);
+				} else {
+					item.toggle(!hides[num]);
+				}
+			} else {
+				// hide by default if no match when doing show
+				item.toggle(!doingShow);
+			}
+		});
+	});
+}
+
+$("#doNumbers").click(showHideNumbers);
+
+$("#clearNumbers").click(function() {
+	makeLines();
+	$(".fileDisplay pre span").show();
+	$("#options input").prop("checked", false);
+});
+
+function makeLines() {
+	$(".fileDisplay pre").each(function() {
+		var item = $(this), markCnt, html, lines;
+		// if not already broken into spans
 		if (!item.find("span").length) {
+			// split into lines with a <span> for each line
 			lines = item.text().split("\n");
 			html = "<span>" + lines.join("\n</span><span>") + "</span>";
 			item.html(html);
-			markCnt = 0;
-			item.find("span").each(function() {
-				txt = $(this).text();
-				if (markCnt > 0) {
-					expectedText = legalSkipLines[markCnt--];
-					if (expectedText && txt.indexOf(expectedText) !== -1) {
-						$(this).addClass("common");
-						return;
+
+			// get all the new lines
+			lines = item.find("span");
+			
+			// lets mark normal 4am restarts
+			lines.each(function(index) {
+				var txt = $(this).text(), restartLines;
+				if (txt.indexOf("daily 4am shutdown") !== -1) {
+					restartLines = lines.slice(index, index +  4);
+					// if next three lines contain what we expect them to
+					var expected = ["Exiting process with code: 1", "error: Forever detected script exited with code", "error: Script restart attempt #"];
+					if (expected.every(function(item, i) {
+						return restartLines.eq(i + 1).text().indexOf(item) !== -1;
+					})) {
+						restartLines.wrapAll("<div class='restart common' />");
 					}
 				}
-				if (txt.indexOf("daily 4am exit") !== -1) {
-					$(this).addClass("common");
-					markCnt = 4;
-				} else if (txt.indexOf("fan changed to") !== -1) {
-					$(this).addClass("fan");
-				} else if (txt.indexOf("ageData()") !== -1) {
-					$(this).addClass("age");
-				} else if (txt.indexOf("fan-control server started on port") !== -1) {
-					$(this).addClass("restart");
-				}
+			});
+			
+			// now lets mark other types of lines
+			var specials = ["fan changed to", "ageData()", "fan-control server started on port"];
+			var specialsClass = ["fan", "age", "restart"];
+			lines.each(function(i, element) {
+				var txt = $(element).text();
+				specials.forEach(function(item, index) {
+					if (txt.indexOf(item) !== -1) {
+						$(element).addClass(specialsClass[index]);
+					}
+				});
 			});
 		}
 	});

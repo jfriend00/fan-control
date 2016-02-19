@@ -188,17 +188,19 @@ app.get('/', function(req, res) {
     }
     templateData.onEventsMax = onEventsMax;
     
-    // look through log file for unexpected restarts
-    var re = /(^.*?Z):\s+fan-control server started on port/;
+    // Look through log file for unexpected restarts
+    // An unexpected restart is one that is not right after 4am and was restarted by Forever
+    // This allows it to skip any manual restarts while testing
+    var re = /([~;\s]+Z):\s+fan-control server started on port/;
+    var reTimestamp = /^\d+;\s+([^;]+)/;
     var p1 = readLines("/home/pi/logs/fan-control.log", function(line, priorLineRestartMsg) {
-        var matches, d;
+        var matches, d, timestamp;
         matches = line.match(re);
         if (matches) {
             d = new Date(matches[1]);
-            // only record results that are not right around 4am
-            // and have a "restart attempt" on the previous line
+            timestamp = line.match(reTimestamp)[1];
             if ((d.getHours() !== 4 || d.getMinutes() > 5) && priorLineRestartMsg) {
-                templateData.restarts.push(d.toString());
+                templateData.restarts.push(timestamp);
             }
         }
         return line.indexOf("Script restart attempt #") !== -1;

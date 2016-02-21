@@ -475,45 +475,37 @@ function toFahrenheitStr(c) {
     return toFahrenheit(c).toFixed(2);
 }
 
-
-
 // returns a promise that eventually returns the temp
+// sample file content
+// 91 01 4b 46 7f ff 0f 10 25 : crc=25 YES
+// 91 01 4b 46 7f ff 0f 10 25 t=25062
+// temperate is in thousandths of a degree Celsius
 function getTemperature(id) {
-    return new Promise(function(resolve, reject) {
-        var fname = "/sys/bus/w1/devices/" + id + "/w1_slave";
-        fs.readFile(fname,  function(err, data) {
-            if (err || !data) {
-                log(1, "failed to read temperature file: " + fname, err);
-                reject("filename (" + fname + ") read failed.");
-                return;
-            }
-            
-            // sample file content
-            // 91 01 4b 46 7f ff 0f 10 25 : crc=25 YES
-            // 91 01 4b 46 7f ff 0f 10 25 t=25062
-            // temperate is in thousandths of a degree Celsius
-            var lines = data.toString().split("\n");
-            if (lines.length >= 2 && lines[0].match(/YES\s*$/)) {
-                // crc passed
-                var match = lines[1].match(/\st=(\d+)\s*$/);
-                if (match) {
-                    // convert to number and return it
-                    resolve(+match[1] / 1000);
-                } else {
-                    var msg = "didn't find t=xxxxx, " + lines[2];
-                    log(1, msg);
-                    reject(msg);
-                    return;
-                }
+    var fname = "/sys/bus/w1/devices/" + id + "/w1_slave";
+    return fs.readFileAsync(fname).then(function(data) {
+        if (!data) {
+            throw "Empty data reading temperature";
+        }
+        var lines = data.toString().split("\n");
+        if (lines.length >= 2 && lines[0].match(/YES\s*$/)) {
+            // crc passed
+            var match = lines[1].match(/\st=(\d+)\s*$/);
+            if (match) {
+                // convert to number and return it
+                return +match[1] / 1000;
             } else {
-                // no valid temperature here
-                log(1, "didn't find 'YES'", lines[1]);
-                reject("didn't find 'YES'");
-                return;
+                throw "Didn't find t=xxxxx, " + lines[2];
             }
-        });
+        } else {
+            // no valid temperature here
+            throw "didn't find 'YES': " +  lines[1];
+        }
+    }).catch(function(err) {
+        log(1, "Failed to read temperature file: " + fname, err);
+        throw err;
     });
 }
+
 
 // data to store
 // Round all temps to 0.1 degree C
@@ -840,8 +832,8 @@ function poll() {
     }, function(err) {
         log(1, "promise rejected on temperature fetch: " + err);
         ++consecutivePollErrors;
-        // after a bunch of consecutive temperature polling errors, we shut-down the process to let it restart
-        if (consecutivePollErrors > 20) {
+        // after 15 minutes of consecutive temperature polling errors, we shut-down the process to let it restart
+        if (consecutivePollErrors > (6 * 15)) {
             log(1, "consecutivePollErrors exceeded threshold, restarting process");
             shutdown(1);
         }

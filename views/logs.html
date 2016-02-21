@@ -212,12 +212,12 @@ function makeLines() {
 			lines = item.find("div");
 			
 			// lets mark normal 4am restarts
+			var expected = ["Exiting process with code: 1", "error: Forever detected script exited with code", "error: Script restart attempt #", "fan-control server started on port"];
 			lines.each(function(index) {
 				var txt = $(this).text(), restartLines;
 				if (txt.indexOf("daily 4am shutdown") !== -1) {
-					restartLines = lines.slice(index, index +  4);
-					// if next three lines contain what we expect them to
-					var expected = ["Exiting process with code: 1", "error: Forever detected script exited with code", "error: Script restart attempt #"];
+					restartLines = lines.slice(index, index + expected.length + 1);
+					// if next N lines contain what we expect them to
 					if (expected.every(function(item, i) {
 						return restartLines.eq(i + 1).text().indexOf(item) !== -1;
 					})) {

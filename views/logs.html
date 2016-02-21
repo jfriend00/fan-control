@@ -212,7 +212,8 @@ function makeLines() {
 			lines = item.find("div");
 			
 			// lets mark normal 4am restarts
-			var expected = ["Exiting process with code: 1", "error: Forever detected script exited with code", "error: Script restart attempt #", "fan-control server started on port"];
+			var expected = ["Exiting process with code: 1", "error: Forever detected script exited with code", 
+				"error: Script restart attempt #", "fan-control server started on port"];
 			lines.each(function(index) {
 				var txt = $(this).text(), restartLines;
 				if (txt.indexOf("daily 4am shutdown") !== -1) {
@@ -223,6 +224,12 @@ function makeLines() {
 					})) {
 						restartLines.addClass("restartDetail").eq(0).addClass("shutdown");
 						restartLines.wrapAll("<div class='restart common' />");
+					}
+				} else if (txt.indexOf("fan-control server started on port") !== -1){
+					// look back one line to see if this was just a manual restart, not a forever restart
+					if (lines.eq(index - 1).text().indexOf("error: Script restart attempt") === -1 || index === 0) {
+						// must have been a manual restart
+						$(this).addClass("restart common");
 					}
 				}
 			});

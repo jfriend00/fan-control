@@ -15,10 +15,11 @@
 #options {width: 220px; float: left;}
 #numbers {width: 430px; float: left;}
 #regex {width: 400px; float: left;}
+#regexFlags {width: 30px;}
 
 #regex label {padding: 0 10px 0 0;}
 #regex input {margin: 0 5px 5px 0;}
-.hidden {display: none;}
+.fileDisplay .line.hidden {display: none;}
 
 #numbers label {
     display: inline-block;
@@ -39,7 +40,7 @@
 
 /* restarts show initially collapsed */
 .restartDetail {display: none; margin-left: 50px;}
-.restart.expanded .restartDetail {display: block;}
+.expanded .restartDetail {display: block;}
 .restartDetail.shutdown {display: block; margin-left: 0;}
 
 </style>
@@ -56,7 +57,7 @@
 </div>
 <div id="regex">
 	<div class="clear">
-		<form id="regexForm"><label>Regular Expression: <input id="doRegex"></label></form>
+		<form id="regexForm"><label>Regular Expression: <input id="doRegex"></label><input id="regexFlags"></form>
 	</div>
 	<div id="regexError" class="clear">
 	</div>
@@ -177,11 +178,12 @@ $("#regexForm").submit(function(e) {
 
 function processRegex(e) {
 	var str = $("#doRegex").val();
+	var flags = $("#regexFlags").val();
 	if (!str) {
 		$(".fileDisplay .line").removeClass("hidden");
 	} else {
 		try {
-			var re = new RegExp(str);
+			var re = new RegExp(str, flags);
 			$("#regexError").text("");
 			var txt, line;
 			$(".fileDisplay .line").each(function() {

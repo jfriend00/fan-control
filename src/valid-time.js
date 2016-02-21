@@ -32,15 +32,13 @@ function checkSystemTime(precision) {
     precision = precision || 5000;
     return ntpClient.getNetworkTimeAsync("pool.ntp.org", 123).then(function(ntpTime) {
         return Math.abs(ntpTime.getTime() - Date.now()) <= precision;
-    }, function(err) {
-        log(7, "ntp time error");
-        throw err;
     });
 }
 
 function waitForAccurateSystemTime(precision, howLong) {
     var start = Date.now();
     var decay = new Decay(5000, 5*60*1000, .5, 5);
+    var errCntr = 0;
     return new Promise(function(resolve, reject) {
     
         function check() {
@@ -54,10 +52,17 @@ function waitForAccurateSystemTime(precision, howLong) {
         }
         
         function again() {
+            ++errCntr;
+            if (errCntr > 1) {
+                // don't log the very first time, we can't contact the server
+                log(7, "ntp time error, errCntr = " + errCntr);
+            }
             if (!howLong || Date.now() - start <= howLong) {
                 setTimeout(check, decay.val());
             } else {
-                reject("timeout waiting for accurate system time");
+                var err = "timeout waiting for accurate system time";
+                log(7, err);
+                reject(err);
             }
         }
         

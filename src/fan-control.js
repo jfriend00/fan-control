@@ -494,11 +494,11 @@ function getTemperature(id) {
                 // convert to number and return it
                 return +match[1] / 1000;
             } else {
-                throw "Didn't find t=xxxxx, " + lines[2];
+                throw "Didn't find t=xxxxx, in line: " + lines[2];
             }
         } else {
             // no valid temperature here
-            throw "didn't find 'YES': " +  lines[1];
+            throw "Didn't find 'YES' in line: " +  lines[1];
         }
     }).catch(function(err) {
         log(1, "Failed to read temperature file: " + fname, err);

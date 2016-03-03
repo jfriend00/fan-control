@@ -2,7 +2,9 @@
 <head>
 {{> common_head}}
 <style>
+.hide {display: none;}
 #container {padding: 10px;}
+#message {margin: 5px 0;}
 .fileDisplay {font-size: 10px;}
 .title {font-weight: bold; font-size: 140%;}
 
@@ -49,10 +51,10 @@
 {{> header}}
 <div id="selectors">
 <div id="options">
-	<label><input id="filterAll" type="checkbox"> Filter All</label><br>
-	<label><input id="filterRestarts" data-toggle="logRestartsHidden" type="checkbox"> Filter out normal restarts</label><br>
-	<label><input id="fanOnOffEvents" data-toggle="logFanEventsHidden" type="checkbox"> Filter out fan on/off events</label><br>
-	<label><input id="filterAgeEvents" data-toggle="logAgeEventsHidden" type="checkbox"> Filter out ageing events</label><br>
+	<label><input id="filterAll" type="checkbox" checked> Filter All</label><br>
+	<label><input id="filterRestarts" data-toggle="logRestartsHidden" type="checkbox" checked> Filter out normal restarts</label><br>
+	<label><input id="fanOnOffEvents" data-toggle="logFanEventsHidden" type="checkbox" checked> Filter out fan on/off events</label><br>
+	<label><input id="filterAgeEvents" data-toggle="logAgeEventsHidden" type="checkbox" checked> Filter out ageing events</label><br>
 	<label><input id="filterOtherRestarts" data-toggle="logOtherRestartsHidden" type="checkbox"> Filter out restarts</label><br>
 </div>
 <div id="regex">
@@ -80,6 +82,8 @@
 
 <div class="clear"><hr></div>
 <div id="container">
+<div id="message"></div>
+<div id="messageUnusualOnly" class="hide">Showing Unusual Log Events Only</div>
 <div class="title">Log File</div>
 <div class="fileDisplay">
 <pre id="logData">
@@ -98,12 +102,13 @@
 <script>
 
 function handleCheckbox() {
+	$("#message").html("");
 	$(".fileDisplay pre").toggleClass($(this).data("toggle"), this.checked);
 }
 
 $("#options input").not("#filterAll").click(handleCheckbox);
 
-$("#filterAll").click(function() {
+$("#filterAll").prop("indeterminate", true).click(function() {
 	var checked = this.checked;
 	$("#options input").not(this).prop("checked", checked).each(handleCheckbox);
 });
@@ -139,6 +144,7 @@ function parseNumbers(str) {
 }
 
 function showHideNumbers() {
+	$("#message").html("");
 	$("#options input").prop("checked", false);
 	var shows = parseNumbers($("#showNumbers").val());
 	var hides = parseNumbers($("#hideNumbers").val());
@@ -177,6 +183,7 @@ $("#regexForm").submit(function(e) {
 });
 
 function processRegex(e) {
+	$("#message").html("");
 	var str = $("#doRegex").val();
 	var flags = $("#regexFlags").val();
 	if (!str) {
@@ -261,7 +268,11 @@ function makeLines() {
 	});
 }
 
-$(document).ready(makeLines);
+makeLines();
+
+// now set default display to be unusual events only
+$("#options input:checked").not("#filterAll").each(handleCheckbox);
+$("#message").html($("#messageUnusualOnly").html());
 
 </script>
 

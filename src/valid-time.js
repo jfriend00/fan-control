@@ -37,8 +37,19 @@ function checkSystemTime(precision) {
 
 function waitForAccurateSystemTime(precision, howLong) {
     var start = Date.now();
-    var decay = new Decay(5000, 5*60*1000, .5, 5);
+    // retry starts every 5 seconds, repeats 5 times, then increases by 50% 
+    //   up until longest retry time of once every 15 minutes
+    var decay = new Decay(5000, 15*60*1000, .5, 5);
     var errCntr = 0;
+    var inaccurateCntr = 0;
+    
+    function logRetries() {
+        // only log anything if there were more than five consecutive errors
+        if (errCntr > 5 || inaccurateCntr > 0) {
+            log(7, "Time synchronization issue, errCntr = " + errCntr + ", inaccurateCntr = " + inaccurateCntr);
+        }
+    }
+
     return new Promise(function(resolve, reject) {
     
         function check() {
@@ -46,6 +57,7 @@ function waitForAccurateSystemTime(precision, howLong) {
                 if (accurate) {
                     resolve(true);
                 } else {
+                    ++inaccurateCntr;
                     again();
                 }
             }, again);
@@ -53,10 +65,13 @@ function waitForAccurateSystemTime(precision, howLong) {
         
         function again() {
             ++errCntr;
-            if (errCntr > 1) {
-                // don't log the very first time, we can't contact the server
-                log(7, "ntp time error, errCntr = " + errCntr);
+            if (errCntr == 10) {
+                // only log once here that we're in a retry loop on 10th retry
+                // final logging will be done later
+                log(7, "In retry loop waiting for system time to agree with ntp server time");
             }
+            // if we're only supposed to go for a certain amount of time, then check to see
+            // if we exceeded that amount of time.  If not, set timer for next decay() value.
             if (!howLong || Date.now() - start <= howLong) {
                 setTimeout(check, decay.val());
             } else {
@@ -67,6 +82,12 @@ function waitForAccurateSystemTime(precision, howLong) {
         }
         
         check();
+    }).then(function(result) {
+        logRetries();
+        return result;
+    }).catch(function(err) {
+        logRetries();
+        throw err;
     });
 }
 

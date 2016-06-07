@@ -109,6 +109,7 @@
 					<option value="hours">Hours</option>
 					<option value="days">Days</option>
 				</select>
+				<span id="fanControlResumeTime" style="padding-left: 10px;"></span>
 			</td>
 		</tr>
 		<tr class="fullRow" id="fanControlReturnToAutoErr">
@@ -207,7 +208,7 @@
 		// now select the appropriate units based on the value
 		if (normalizeUnits && fanControl === "off") {
 			// get return to auto value in minutes
-			var time = +$("#fanControlReturnToAuto").val();
+			var time = +$("#fanControlReturnToAuto").val();    // time in minutes
 			var units = "minutes";
 			if (time >= 60*24) {
 				// convert to days
@@ -220,12 +221,32 @@
 			}
 			$("#fanControlReturnToAuto").val(time.toFixed(1));
 			$("#fanControlReturnToAutoUnits").val(units);
+			updateFanControlResumeTime();
+		} else {
+			$("#fanControlResumeTime").html(" ");
 		}
 	}
 	
-	// set initial value
-	updateFanControlDisplay(true);
+	function updateFanControlResumeTime() {
+		var time = +$("#fanControlReturnToAuto").val();
+		var units = $("#fanControlReturnToAutoUnits").val();
+		if (units == "days") {
+			var timeMs = time * 24 * 60 * 60 * 1000;		// convert to ms from now
+			// calculate when it will resume auto
+			var resumeTime = new Date(Date.now() + timeMs);
+			var timeString = resumeTime.toString().replace(/:\d\d\s.*$/, "");
+			$("#fanControlResumeTime").html("at " + timeString);
+		} else {
+			$("#fanControlResumeTime").html(" ");
+		}
+	}
 	
+	// monitor the resume time for changes
+	$("#fanControlReturnToAuto").on("input", updateFanControlResumeTime);
+	$("#fanControlReturnToAutoUnits").on("change", updateFanControlResumeTime);
+	
+	// set initial value
+	updateFanControlDisplay(true);	
 	
 	// on/off/auto form
 	var onOffForm = $("#on-off");

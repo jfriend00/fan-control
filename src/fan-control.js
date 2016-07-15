@@ -735,7 +735,8 @@ function setFan(fanOn, reason, ignoreTime) {
             data.addFanOnOffEvent(fanOn ? "on" : "off", reason);
             log(3, "fan changed to " + (fanOn ? "on" : "off"));
         } else {
-            log(3, "fan turn on holding for waitTime");
+            // configure so we don't show repeated messages of this type within a 5 minute window
+            log({level: 3, delta: 1000*60*5}, "fan turn on holding for waitTime");
         }
     }
 }

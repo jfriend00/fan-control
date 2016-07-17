@@ -37,12 +37,56 @@ setInterval(function() {
             delete tags[tag];
         }
     });
-}, dayMs + (1000*60*10));
+}, dayMs + (1000*60*10)).unref();
+
+var suffixes = {
+    ms: 1,
+    sec: 1000,
+    min: 1000 * 60,
+    hr:  1000 * 60 * 60,
+    day: 1000 * 60 * 60 * 24,
+    year: 1000 * 60 * 60 * 24 * 365
+};
+
+function convertToMs(num, suffix) {
+    var result = num;
+    if (suffix) {
+        let multiplier = suffixes[suffix];
+        if (multiplier) {
+            result = num * multiplier;
+        } else {
+            throw new Error('Unrecognized suffix "' + suffix + '" on time value');
+        }
+    }
+    return Math.round(result);
+}
+
+// Accepts the following forms (whitespace is optional before suffix)
+// Decimal values are allowed as input, but only an integer will be output
+// 1234
+// 1111 ms
+// 2222 sec
+// 3333 min
+// 4444 hr
+// 5555 day
+// 6666 year
+function parseTimeToMs(val) {
+    if (typeof val === "number") return Math.round(val);
+    if (typeof val === "string") {
+        let matches = val.match(/^\s*([\d.]+)\s*([a-z]+)?\s*$/);
+        if (matches) {
+            return convertToMs(+matches[1], matches[2]);
+        }
+    }
+    // if not already returned from the function, then it must have been a bad format
+    throw new Error("Illegal time value: " + val);
+}
 
 // can be used as:
 //  log(3, "Some msg");
 //  log({tag: "waiting", level: 3, delta: xxx}, "Some msg");
 //  log({level: 3, delta: xxx}, "Some msg");         if tag is not present, then first msg is used as the tag
+// delta value can be any of the forms that parseTimeToMs() takes
 function log(options) {
     var output = [];
     try {
@@ -52,7 +96,8 @@ function log(options) {
             let tag = options.tag || args[0];
             let now = Date.now();
             let priorTime = tags[tag];
-            if (!priorTime || now - priorTime > options.delta) {
+            let delta = parseTimeToMs(options.delta || 0);
+            if (!priorTime || now - priorTime >= delta) {
                 // update the tag time and let the normal processing occur
                 tags[tag] = now;
             } else {
@@ -73,7 +118,7 @@ function log(options) {
             }
         });
     } catch(e) {
-        output.push("exception thrown in log() - partial logging output");
+        output.push("exception " + util.inspect(e, {showHidden: true, depth: null}) + "\n - partial logging output");
     }
     console.log(output.join("; "));
 }

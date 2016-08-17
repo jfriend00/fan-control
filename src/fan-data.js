@@ -349,7 +349,7 @@ var data = {
         }
         
         if (this.dataBlock) {
-            log(5, "hit dataBlock on ageData() - queueing");
+//            log(5, "hit dataBlock on ageData() - queueing");
             this.queue.push(run.bind(this));
         } else {
             run.call(this);
@@ -385,7 +385,7 @@ var data = {
         }
         
         if (this.dataBlock) {
-            log(5, "hit dataBlock on addTemperature() - queueing");
+//            log(5, "hit dataBlock on addTemperature() - queueing");
             this.queue.push(add);
         } else {
             add();
@@ -401,7 +401,7 @@ var data = {
         }
         
         if (this.dataBlock) {
-            log(5, "hit dataBlock on addFanOnOffEvent() - queueing");
+//            log(5, "hit dataBlock on addFanOnOffEvent() - queueing");
             this.queue.push(add);
         } else {
             add();

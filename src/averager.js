@@ -10,15 +10,13 @@ timeAverager.prototype = {
     add: function(value) {
         this.data.push({t: Date.now(), value: value});
         
-        // FIXME: remove this debugging code
-        // this logs if the difference between any two temperature points is more than 0.5 degrees
-        // we're trying to see if the outside temperature is noisy
         function toFahrenheit(c) {
             return (+c * 9 / 5) + 32;
         }
         
         if (this.data.length > 1) {
-            if (Math.abs(value - this.data[this.data.length - 2].value) > 0.5) {
+            // log if there are unusual jumps in temperature (in case there's a problem with temperature sensors)
+            if (Math.abs(value - this.data[this.data.length - 2].value) > 2) {
                 log(3, "temperature jump from " + toFahrenheit(this.data[this.data.length - 2].value) + " to " + toFahrenheit(value));
             }
         }

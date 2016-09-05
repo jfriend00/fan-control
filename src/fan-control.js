@@ -393,6 +393,11 @@ app.get('/api/highlow', function(req, res, next) {
     });    
 });
 
+// 404 handler for missing pages
+app.use(function(req, res, next) {
+    res.status(404).send("Sorry can't find that page!");
+});
+
 var server = app.listen(8081, function() {
     log(5, new Date().toISOString() + ": fan-control server started on port 8081");
 });
